@@ -1,0 +1,24 @@
+OBJ_FILES = sim.obj 
+DLLOUT = gpusim.dll
+VS_LIB = "C:/Program Files (x86)/Microsoft Visual Studio 10.0/VC/lib"  # CHECK
+
+
+CUDA_SDK_LIB = "$(CUDA_LIB_PATH)"
+
+
+#R_INC = "C:/Program Files (x86)/R/R-2.10.1/include" # CHECK
+#R_LIB = "D:/R2.10-src-R.dll/R-2.10.1/src/gnuwin32" # "G:/R-2.10.1/src/gnuwin32"
+LIBS = cuda.lib cudart.lib cublas.lib curand.lib cufft.lib
+
+	
+NVCC_FLAGS = -shared -DD10 -DWIN32_D10 --cl-version 2010 --machine 32 --compile -ccbin "c:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\bin" -Xcompiler "/MD"
+
+
+gpusim.dll: $(OBJ_FILES)
+	link /DLL /OUT:$(DLLOUT) $(OBJ_FILES) /LIBPATH:$(CUDA_SDK_LIB) $(LIBS) /MACHINE:X86
+
+sim.obj: sim.cu
+	nvcc -c sim.cu -o sim.obj -I"$(CUDA_INC_PATH)" $(NVCC_FLAGS)
+
+clean:
+	rm $(OBJ_FILES) *.linkinfo gpusim.exp gpusim.lib gpusim.dll

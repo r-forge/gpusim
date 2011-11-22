@@ -1,0 +1,18 @@
+\begin{thebibliography}{1}
+
+\bibitem{pkg:fields}
+Reinhard Furrer, Douglas Nychka, and Stephen Sain.
+\newblock {\em fields: Tools for spatial data}, 2010.
+\newblock R package version 6.3.
+
+\bibitem{pkg:gstat}
+Edzer~J. Pebesma.
+\newblock Multivariable geostatistics in s: the gstat package.
+\newblock {\em Computers \& Geosciences}, 30:683--691, 2004.
+
+\bibitem{srinivasan:kriging}
+Murtugudde~R Srinivasan~BV, Duraiswami~R.
+\newblock {\em Efficient kriging for real-time spatio-temporal interpolation},
+  2010.
+
+\end{thebibliography}

@@ -1,0 +1,8 @@
+
+A short introduction to the package can be found in <pkgroot>/doc/gpusim/gpusim.pdf. 
+This vignette contains installation instructions and some examples how to use the package.
+
+
+TO DO:
+- Implement check for non-positive definite FFT cov grids
+- Implement 3D simulation
