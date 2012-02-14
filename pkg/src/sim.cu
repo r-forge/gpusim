@@ -1,8 +1,14 @@
 /**
 * sim.cu C and CUDA Interface for gpusim R package
 * Author: Marius Appel - marius.appel@uni-muenster.de
+*
+* TODO: 
+*	- Split into several files
+*	- Add functions to minimize redundant code
+*	- introduce debug args for simpler bug finding
+*
+*	14.02.2012
 **/
-
 
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
@@ -22,6 +28,10 @@
 #include <string>
 
 
+//#define DEBUG
+
+
+
 #ifdef _WIN32
 #define EXPORT __declspec(dllexport)
 #else
@@ -30,7 +40,7 @@
 
 #define PI 3.1415926535897932384626433832795 
 enum covfunc {EXP=0, SPH=1, GAU=2}; 
-
+enum errcode {OK=0, ERROR_NEGATIVE_COV_VALUES=1, ERROR_UNKNOWN = 2};
 
 /* Helper function for writing a raster to a csv file for testing purposes */
 void writeCSVMatrix(const char *filename, float* matrix, int numRows, int numCols) {
@@ -49,10 +59,43 @@ void writeCSVMatrix(const char *filename, float* matrix, int numRows, int numCol
 	file.close();
 }
 
+void writeCSVMatrix(const char *filename, cufftComplex* matrix, int numRows, int numCols) {
+	using namespace std;
+	
+	fstream file;
+	file.open(filename, ios::out);
+	if (file.fail()) return;
+
+	for (int i=0; i<numRows; ++i) {
+		for (int j = 0; j<numCols; ++j) {
+			file << matrix[i * numCols + j].x << " ";
+		}
+		file << "\n";
+	}
+	file << "\n";file << "\n";
+	for (int i=0; i<numRows; ++i) {
+		for (int j = 0; j<numCols; ++j) {
+			file << matrix[i * numCols + j].y << " ";
+		}
+		file << "\n";
+	}
+	file.close();
+}
+
+
+
+int ceil2(int n) {
+	int out = 1;
+	while(out<n) out*=2;
+	return out;
+}
+
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+
 // Covariance functions
 void EXPORT covExp(double *out, double *h, int *n, double *sill, double *range, double *nugget) {
 	for (int i=0; i<*n; ++i) {
@@ -73,6 +116,57 @@ void EXPORT covSph(double *out, double *h, int *n, double *sill, double *range, 
 		else out[i] = 0.0; // WARNING,  sample cov matrix may be not regular for wenn point pairs with distance > range
 	}
 }
+
+// Distance and covariance matrix calculation, input coordinates are NOT interleaved, this fits better to an R data.frame
+void EXPORT dCovExp2d(double *out, double *xy, int *n, double *sill, double *range, double *nugget) {	
+	for (int i=0; i<*n; ++i) {	
+		// Diagonal elements here
+		out[i*(*n)+i] = (*nugget + *sill);
+		for (int j=i+1; j<*n; ++j) {			
+			// Compute distance
+			double dist = sqrt((xy[i] - xy[j]) * (xy[i] - xy[j]) + (xy[i+*n] - xy[j+*n]) * (xy[i+*n] - xy[j+*n]));
+			// Compute cov
+			dist = ((dist == 0.0)? (*nugget + *sill) : (*sill*exp(-dist/(*range)))); // Or assume no two points having the same coords?!
+			out[i*(*n)+j] = dist;
+			out[j*(*n)+i] = dist;	
+		}
+	}	
+}
+
+void EXPORT dCovGau2d(double *out, double *xy, int *n, double *sill, double *range, double *nugget) {	
+	for (int i=0; i<*n; ++i) {	
+		// Diagonal elements here
+		out[i*(*n)+i] = (*nugget + *sill);
+		for (int j=i+1; j<*n; ++j) {			
+			// Compute distance
+			double dist2 = (xy[i] - xy[j]) * (xy[i] - xy[j]) + (xy[i+*n] - xy[j+*n]) * (xy[i+*n] - xy[j+*n]);
+			// Compute cov
+			dist2 = ((dist2 == 0.0)? (*nugget + *sill) : (*sill*exp(- (dist2) / ((*range)*(*range))  ))); // Or assume no two points having the same coords?!
+			out[i*(*n)+j] = dist2;
+			out[j*(*n)+i] = dist2;
+		}
+	}
+}
+
+
+void EXPORT dCovSph2d(double *out, double *xy, int *n, double *sill, double *range, double *nugget) {	
+	for (int i=0; i<*n; ++i) {	
+		// Diagonal elements here
+		out[i*(*n)+i] = (*nugget + *sill);
+		for (int j=i+1; j<*n; ++j) {			
+			// Compute distance
+			double dist = sqrt((xy[i] - xy[j]) * (xy[i] - xy[j]) + (xy[i+*n] - xy[j+*n]) * (xy[i+*n] - xy[j+*n]));
+			// Compute cov
+			if (dist == 0.0) dist = (*nugget + *sill);		
+			else if (dist <= *range) dist = *sill * (1.0 - (((3.0*dist) / (2.0*(*range))) - ((dist * dist * dist) / (2.0 * (*range) * (*range) * (*range))) ));						
+			else dist = 0.0;		
+			out[i*(*n)+j] = dist;
+			out[j*(*n)+i] = dist;
+		}
+	}	
+}
+
+
 
 #ifdef __cplusplus
 }
@@ -115,13 +209,13 @@ __global__ void realToComplexKernel(cufftComplex *c, float* r, int n) {
 	}
 }
 
-
+// If result has artefacts, change here...
 // Gets relevant real parts of 2nx x 2ny grid and devides it by div
-__global__ void ReDiv(float *out, cufftComplex *c, float div,int nx, int ny) {
+__global__ void ReDiv(float *out, cufftComplex *c, float div,int nx, int ny, int N) {
 	int col = threadIdx.x + blockIdx.x * blockDim.x;
 	int row = threadIdx.y + blockIdx.y * blockDim.y;
 	//if (col < nx && row < ny) out[col*ny+row] = c[col*2*ny+row].x / div; 
-	if (col < nx && row < ny) out[row*nx+col] = c[row*2*nx+col].x / div; 
+	if (col < nx && row < ny) out[row*nx+col] = c[row*N+col].x / div; 
 }
 
 
@@ -407,7 +501,7 @@ __global__ void residuals(float* res, float *srcdata, float *uncond_grid, float2
 extern "C" {
 #endif
 
-	void EXPORT init(int *result) {
+	void EXPORT initSim(int *result) {
 		cudaError_t cudaStatus;
 		cudaStatus = cudaSetDevice(0);
 		if (cudaStatus != cudaSuccess)  {
@@ -447,16 +541,18 @@ struct uncond_state {
 extern "C" {
 #endif
 
-void EXPORT unconditionalSimInit(float *p_xmin, float *p_xmax, int *p_nx, float *p_ymin, float *p_ymax, int *p_ny, float *p_sill, float *p_range, float *p_nugget, int *p_covmodel, int *ret_code) {
-	*ret_code = 1;
+void EXPORT unconditionalSimInit(float *p_xmin, float *p_xmax, int *p_nx, float *p_ymin, float *p_ymax, int *p_ny, float *p_sill, float *p_range, float *p_nugget, int *p_covmodel, int *do_check, int *ret_code) {
+	*ret_code = OK;
 	cudaError_t cudaStatus;
 	
 	uncond_global.nx= *p_nx; // Number of cols
 	uncond_global.ny= *p_ny; // Number of rows
 	uncond_global.n= 2*uncond_global.nx; // Number of cols
 	uncond_global.m= 2*uncond_global.ny; // Number of rows
-	uncond_global.dx = (*p_xmax - *p_xmin) / uncond_global.nx;
-	uncond_global.dy = (*p_ymax - *p_ymin) / uncond_global.ny;
+	//uncond_global.n = ceil2(2*uncond_global.nx); /// 
+	//uncond_global.m = ceil2(2*uncond_global.ny); /// 
+	uncond_global.dx = (*p_xmax - *p_xmin) / (uncond_global.nx-1);
+	uncond_global.dy = (*p_ymax - *p_ymin) / (uncond_global.ny-1);
 	
 	// 1d cuda grid
 	uncond_global.blockSize1d = dim3(256);
@@ -478,14 +574,14 @@ void EXPORT unconditionalSimInit(float *p_xmin, float *p_xmax, int *p_nx, float 
 	cufftComplex *h_grid_c = (cufftComplex*)malloc(sizeof(cufftComplex)*uncond_global.m*uncond_global.n);
 	for (int i=0; i<uncond_global.n; ++i) { // i =  col index
 		for (int j=0; j<uncond_global.m; ++j) { // j = row index 
-			h_grid_c[j*uncond_global.n+i].x = *p_xmin + i * uncond_global.dx; 
-			h_grid_c[j*uncond_global.n+i].y = *p_ymin + j * uncond_global.dy;  
+			h_grid_c[j*uncond_global.n+i].x = *p_xmin + (i+1) * uncond_global.dx; 
+			h_grid_c[j*uncond_global.n+i].y = *p_ymin + (j+1) * uncond_global.dy;  
 		}
 	}
-
 	
-	float xc = (uncond_global.dx*uncond_global.n)/2;
-	float yc = (uncond_global.dy*uncond_global.m)/2;
+	
+	float xc = *p_xmin + (uncond_global.dx*uncond_global.n)/2;
+	float yc = *p_ymin +(uncond_global.dy*uncond_global.m)/2;
 	float sill = *p_sill;
 	float range = *p_range;
 	float nugget = *p_nugget;
@@ -518,41 +614,109 @@ void EXPORT unconditionalSimInit(float *p_xmin, float *p_xmax, int *p_nx, float 
 	cudaFree(d_grid);
 
 
+	 
+//#ifdef DEBUG 
+//	{
+//		/// ****** TEST AUSGABE COV MATRIX******* ///////
+//		cufftComplex *h_cov = (cufftComplex*)malloc(sizeof(cufftComplex)*uncond_global.n*uncond_global.m);
+//		cudaStatus = cudaMemcpy(h_cov,uncond_global.d_cov,sizeof(cufftComplex)*uncond_global.n*uncond_global.m,cudaMemcpyDeviceToHost);
+//		writeCSVMatrix("C:\\fft\\sampleCov.csv",h_cov,uncond_global.m,uncond_global.n);
+//		free(h_cov);
+//	}
+//#endif
+
+//#ifdef DEBUG 
+//	{
+//		/// ****** TEST AUSGABE TRICK GRID ******* /////// 
+//		cufftComplex *h_cov = (cufftComplex*)malloc(sizeof(cufftComplex)*uncond_global.n*uncond_global.m);
+//		cudaStatus = cudaMemcpy(h_cov,d_trick_grid_c,sizeof(cufftComplex)*uncond_global.n*uncond_global.m,cudaMemcpyDeviceToHost);
+//		writeCSVMatrix("C:\\fft\\trickgrid.csv",h_cov,uncond_global.m,uncond_global.n);
+//		free(h_cov);
+//	}
+//#endif
+//
+
+
 	// Execute 2d FFT of covariance grid in order to get the spectral representation 
 	cufftExecC2C(uncond_global.plan1, uncond_global.d_cov, uncond_global.d_cov, CUFFT_FORWARD); // in place fft forward
-	cufftExecC2C(uncond_global.plan1, d_trick_grid_c, d_trick_grid_c, CUFFT_FORWARD); // in place fft forward
 
-	// Copy to host and check for negative real parts (NOT WORKING YET)
-	/*cufftComplex *h_cov = (cufftComplex*)malloc(sizeof(cufftComplex)*uncond_global.n*uncond_global.m);
-	cudaStatus = cudaMemcpy(h_cov,uncond_global.d_cov,sizeof(cufftComplex)*uncond_global.n*uncond_global.m,cudaMemcpyDeviceToHost);
-	for (int i=0; i<uncond_global.n*uncond_global.m; ++i) {
-		if (h_cov[i].x < 0.0) {
-			*ret_code = 2; 
-			free(h_cov);
-			cudaFree(d_trick_grid_c);
-			cudaFree(uncond_global.d_cov);
-			return;
-		}	
-	}
-	free(h_cov);*/
+//#ifdef DEBUG 
+//	{
+//		/// ****** TEST AUSGABE FFT( COV GRID) ******* /////// 
+//		cufftComplex *h_cov = (cufftComplex*)malloc(sizeof(cufftComplex)*uncond_global.n*uncond_global.m);
+//		cudaStatus = cudaMemcpy(h_cov,uncond_global.d_cov,sizeof(cufftComplex)*uncond_global.n*uncond_global.m,cudaMemcpyDeviceToHost);
+//		writeCSVMatrix("C:\\fft\\fftSampleCov.csv",h_cov,uncond_global.m,uncond_global.n);
+//		free(h_cov);
+//	}
+//#endif
+//
+	cufftExecC2C(uncond_global.plan1, d_trick_grid_c, d_trick_grid_c, CUFFT_FORWARD); // in place fft forward
+	
+//#ifdef DEBUG 
+//	{
+//		/// ****** TEST AUSGABE FFT( TRICK GRID) ******* /////// 
+//		cufftComplex *h_cov = (cufftComplex*)malloc(sizeof(cufftComplex)*uncond_global.n*uncond_global.m);
+//		cudaStatus = cudaMemcpy(h_cov,d_trick_grid_c,sizeof(cufftComplex)*uncond_global.n*uncond_global.m,cudaMemcpyDeviceToHost);
+//		writeCSVMatrix("C:\\fft\\fftTrickGrid.csv",h_cov,uncond_global.m,uncond_global.n);
+//		free(h_cov);
+//	}
+//#endif
 	
 	// Multiply fft of "trick" grid with n*m
 	multKernel<<<uncond_global.blockCount1d, uncond_global.blockSize1d>>>(d_trick_grid_c, uncond_global.n, uncond_global.m);
 	cudaStatus = cudaThreadSynchronize();
 	if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching multKernel!\n", cudaStatus);	
 
+
+//#ifdef DEBUG 
+//	{
+//		/// ****** TEST AUSGABE FFT( TRICK GRID) ******* /////// 
+//		cufftComplex *h_cov = (cufftComplex*)malloc(sizeof(cufftComplex)*uncond_global.n*uncond_global.m);
+//		cudaStatus = cudaMemcpy(h_cov,d_trick_grid_c,sizeof(cufftComplex)*uncond_global.n*uncond_global.m,cudaMemcpyDeviceToHost);
+//		writeCSVMatrix("C:\\fft\\fftTrickGridTimesNM.csv",h_cov,uncond_global.m,uncond_global.n);
+//		free(h_cov);
+//	}
+//#endif
+
+
 	// Devide spectral covariance grid by "trick" grid
 	divideSpectrumKernel<<<uncond_global.blockCount1d, uncond_global.blockSize1d>>>(uncond_global.d_cov, d_trick_grid_c);	
 	cudaStatus = cudaThreadSynchronize();
 	if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching divideSpectrumKernel!\n", cudaStatus);	
 	cudaFree(d_trick_grid_c);
+	
+//#ifdef DEBUG 
+//	{
+//		/// ****** TEST AUSGABE FFT( COV GRID) / FFT(TRICKGRID)*N*M ******* /////// 
+//		cufftComplex *h_cov = (cufftComplex*)malloc(sizeof(cufftComplex)*uncond_global.n*uncond_global.m);
+//		cudaStatus = cudaMemcpy(h_cov,uncond_global.d_cov,sizeof(cufftComplex)*uncond_global.n*uncond_global.m,cudaMemcpyDeviceToHost);
+//		writeCSVMatrix("C:\\fft\\fftSampleCovByTrickGridNM.csv",h_cov,uncond_global.m,uncond_global.n);
+//		free(h_cov);
+//	}
+//#endif
+//
+
+
+	// Copy to host and check for negative real parts
+	if (*do_check) {
+		cufftComplex *h_cov = (cufftComplex*)malloc(sizeof(cufftComplex)*uncond_global.n*uncond_global.m);
+		cudaStatus = cudaMemcpy(h_cov,uncond_global.d_cov,sizeof(cufftComplex)*uncond_global.n*uncond_global.m,cudaMemcpyDeviceToHost);
+		for (int i=0; i<uncond_global.n*uncond_global.m; ++i) {
+			if (h_cov[i].x < 0.0) {
+				*ret_code = ERROR_NEGATIVE_COV_VALUES; 
+				free(h_cov);
+				cudaFree(uncond_global.d_cov);
+				return;
+			}	
+		}
+		free(h_cov);
+	}
 
 	// Compute sqrt of cov grid
 	sqrtKernel<<<uncond_global.blockCount1d, uncond_global.blockSize1d>>>(uncond_global.d_cov);
 	cudaStatus = cudaThreadSynchronize();
 	if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching sqrtKernel\n", cudaStatus);
 
-	*ret_code = 0;
 }
 
 // Generates unconditional realizations
@@ -561,7 +725,7 @@ void EXPORT unconditionalSimInit(float *p_xmin, float *p_xmax, int *p_nx, float 
 // ret_code = return code: 0=ok
 void EXPORT unconditionalSimRealizations(float *p_out,  int *p_k, int *ret_code)
 {
-	*ret_code = 1;
+	*ret_code = OK;
 	cudaError_t cudaStatus;
 
 	int k = *p_k;
@@ -610,7 +774,7 @@ void EXPORT unconditionalSimRealizations(float *p_out,  int *p_k, int *ret_code)
 		dim3 blockCount2dhalf = dim3(uncond_global.nx/blockSize2dhalf.x,uncond_global.ny/blockSize2dhalf.y);
 		if (uncond_global.nx % blockSize2dhalf.x != 0) ++blockCount2dhalf.x;
 		if (uncond_global.ny % blockSize2dhalf.y != 0) ++blockCount2dhalf.y;
-		ReDiv<<<blockCount2dhalf, blockSize2dhalf>>>(d_out, d_amp, std::sqrt((float)(uncond_global.n*uncond_global.m)), uncond_global.nx, uncond_global.ny);
+		ReDiv<<<blockCount2dhalf, blockSize2dhalf>>>(d_out, d_amp, std::sqrt((float)(uncond_global.n*uncond_global.m)), uncond_global.nx, uncond_global.ny, uncond_global.n);
 		cudaStatus = cudaThreadSynchronize();	
 		if (cudaStatus != cudaSuccess) {
 			printf("cudaThreadSynchronize returned error code %d after launching ReDiv!\n", cudaStatus);
@@ -624,15 +788,13 @@ void EXPORT unconditionalSimRealizations(float *p_out,  int *p_k, int *ret_code)
 	cudaFree(d_amp);
 	cudaFree(d_out);
 	curandDestroyGenerator(curandGen);
-	*ret_code = 0;
 }
 
 
 void EXPORT unconditionalSimRelease(int *ret_code) {
-	*ret_code = 1;
+	*ret_code = OK;
 	cudaFree(uncond_global.d_cov);
 	cufftDestroy(uncond_global.plan1);
-	*ret_code = 0;
 }
 
 
@@ -684,8 +846,8 @@ extern "C" {
 #endif
 
 
-void EXPORT conditionalSimInit(float *p_xmin, float *p_xmax, int *p_nx, float *p_ymin, float *p_ymax, int *p_ny, float *p_sill, float *p_range, float *p_nugget, float *p_srcXY, float *p_srcData, int *p_numSrc, float *p_cov_inv, int *p_covmodel, int *ret_code) {
-	*ret_code = 1;
+void EXPORT conditionalSimInit(float *p_xmin, float *p_xmax, int *p_nx, float *p_ymin, float *p_ymax, int *p_ny, float *p_sill, float *p_range, float *p_nugget, float *p_srcXY, float *p_srcData, int *p_numSrc, float *p_cov_inv, int *p_covmodel, int *do_check, int *ret_code) {
+	*ret_code = OK;
 	cudaError_t cudaStatus;
 	cublasInit();
 
@@ -693,8 +855,8 @@ void EXPORT conditionalSimInit(float *p_xmin, float *p_xmax, int *p_nx, float *p
 	cond_global.ny= *p_ny; // Number of rows
 	cond_global.n= 2*cond_global.nx; // Number of cols
 	cond_global.m= 2*cond_global.ny; // Number of rows
-	cond_global.dx = (*p_xmax - *p_xmin) / cond_global.nx;
-	cond_global.dy = (*p_ymax - *p_ymin) / cond_global.ny;
+	cond_global.dx = (*p_xmax - *p_xmin) / (cond_global.nx-1);
+	cond_global.dy = (*p_ymax - *p_ymin) / (cond_global.ny-1);
 	cond_global.numSrc = *p_numSrc;
 	cond_global.xmin = *p_xmin;
 	cond_global.xmax = *p_xmax;
@@ -730,14 +892,14 @@ void EXPORT conditionalSimInit(float *p_xmin, float *p_xmax, int *p_nx, float *p
 	cufftComplex *h_grid_c = (cufftComplex*)malloc(sizeof(cufftComplex)*cond_global.m*cond_global.n);
 	for (int i=0; i<cond_global.n; ++i) { // i = col index
 		for (int j=0; j<cond_global.m; ++j) { // j = row index
-			h_grid_c[j*cond_global.n+i].x = *p_xmin + i * cond_global.dx; 
-			h_grid_c[j*cond_global.n+i].y = *p_ymin + j * cond_global.dy; 
+			h_grid_c[j*cond_global.n+i].x = *p_xmin + (i+1) * cond_global.dx; 
+			h_grid_c[j*cond_global.n+i].y = *p_ymin + (j+1) * cond_global.dy; 
 		}
 	}
 
 	
-	float xc = (cond_global.dx*cond_global.n)/2;
-	float yc = (cond_global.dy*cond_global.m)/2;
+	float xc = *p_xmin + (cond_global.dx*cond_global.n)/2;
+	float yc = *p_ymin + (cond_global.dy*cond_global.m)/2;
 	cufftComplex *d_grid;
 	
 	// Allocate grid and cov arrays on GPU
@@ -771,20 +933,6 @@ void EXPORT conditionalSimInit(float *p_xmin, float *p_xmax, int *p_nx, float *p
 	cufftExecC2C(cond_global.plan1, cond_global.d_cov, cond_global.d_cov, CUFFT_FORWARD); // in place fft forward
 	cufftExecC2C(cond_global.plan1, d_trick_grid_c, d_trick_grid_c, CUFFT_FORWARD); // in place fft forward
 
-	// Copy to host and check for negative real parts // NOT WORKING YET
-	/*cufftComplex *h_cov = (cufftComplex*)malloc(sizeof(cufftComplex)*cond_global.n*cond_global.m);
-	cudaStatus = cudaMemcpy(h_cov,cond_global.d_cov,sizeof(cufftComplex)*cond_global.n*cond_global.m,cudaMemcpyDeviceToHost);
-	for (int i=0; i<cond_global.n*cond_global.m; ++i) {
-		if (h_cov[i].x < 0.0) {
-			*ret_code = 2; 
-			free(h_cov);
-			cudaFree(d_trick_grid_c);
-			cudaFree(cond_global.d_cov);
-			return;
-		}	
-	}
-	free(h_cov);*/
-
 	// Multiplication of fft(trick_grid) with n*m	
 	multKernel<<<cond_global.blockCount1d, cond_global.blockSize1d>>>(d_trick_grid_c, cond_global.n, cond_global.m);
 	cudaStatus = cudaThreadSynchronize();
@@ -795,6 +943,21 @@ void EXPORT conditionalSimInit(float *p_xmin, float *p_xmax, int *p_nx, float *p
 	cudaStatus = cudaThreadSynchronize();
 	if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching divideSpectrumKernel!\n", cudaStatus);	
 	cudaFree(d_trick_grid_c);
+
+	// Copy to host and check for negative real parts
+	if (*do_check) {
+		cufftComplex *h_cov = (cufftComplex*)malloc(sizeof(cufftComplex)*cond_global.n*cond_global.m);
+		cudaStatus = cudaMemcpy(h_cov,cond_global.d_cov,sizeof(cufftComplex)*cond_global.n*cond_global.m,cudaMemcpyDeviceToHost);
+		for (int i=0; i<cond_global.n*cond_global.m; ++i) {
+			if (h_cov[i].x < 0.0) {
+				*ret_code = ERROR_NEGATIVE_COV_VALUES; 
+				free(h_cov);
+				cudaFree(cond_global.d_cov);
+				return;
+			}	
+		}
+		free(h_cov);
+	}
 
 	// Compute sqrt of spectral cov grid
 	sqrtKernel<<<cond_global.blockCount1d, cond_global.blockSize1d>>>(cond_global.d_cov);
@@ -831,7 +994,6 @@ void EXPORT conditionalSimInit(float *p_xmin, float *p_xmax, int *p_nx, float *p
 	cudaMalloc((void**)&cond_global.d_covinv,sizeof(float) * (cond_global.numSrc + 1) * (cond_global.numSrc + 1));
 	cudaMemcpy(cond_global.d_covinv,p_cov_inv,sizeof(float) * (cond_global.numSrc + 1) * (cond_global.numSrc + 1),cudaMemcpyHostToDevice);
 
-	*ret_code = 0;
 }
 
 
@@ -843,7 +1005,7 @@ void EXPORT conditionalSimInit(float *p_xmin, float *p_xmax, int *p_nx, float *p
 // ret_code = return code: 0=ok
 void EXPORT conditionalSimRealizations(float *p_out, int *p_k, int *ret_code)
 {
-	*ret_code = 1;
+	*ret_code = OK;
 	cudaError_t cudaStatus;
 	
 	int k = *p_k;
@@ -905,7 +1067,7 @@ void EXPORT conditionalSimRealizations(float *p_out, int *p_k, int *ret_code)
 		dim3 blockCount2dhalf = dim3(cond_global.nx/blockSize2dhalf.x,cond_global.ny/blockSize2dhalf.y);
 		if (cond_global.nx % blockSize2dhalf.x != 0) ++blockCount2dhalf.x;
 		if (cond_global.ny % blockSize2dhalf.y != 0) ++blockCount2dhalf.y;
-		ReDiv<<<blockCount2dhalf, blockSize2dhalf>>>(d_uncond, d_amp, std::sqrt((float)(cond_global.n*cond_global.m)), cond_global.nx, cond_global.ny);
+		ReDiv<<<blockCount2dhalf, blockSize2dhalf>>>(d_uncond, d_amp, std::sqrt((float)(cond_global.n*cond_global.m)), cond_global.nx, cond_global.ny, cond_global.n);
 		cudaStatus = cudaThreadSynchronize();	
 		if (cudaStatus != cudaSuccess) {
 			printf("cudaThreadSynchronize returned error code %d after launching ReDiv!\n", cudaStatus);
@@ -966,21 +1128,390 @@ void EXPORT conditionalSimRealizations(float *p_out, int *p_k, int *ret_code)
 	cudaFree(d_rand);
 	cudaFree(d_fftrand);
 	cudaFree(d_amp);
-	*ret_code = 0;
 }
 
 
 
 void EXPORT conditionalSimRelease(int *ret_code) {
-	*ret_code = 1;
+	*ret_code = OK;
 	cudaFree(cond_global.d_covinv);
 	cufftDestroy(cond_global.plan1);
 	cudaFree(cond_global.d_samplexy);
 	cudaFree(cond_global.d_sampledata);
 	cudaFree(cond_global.d_sampleindices);
 	cudaFree(cond_global.d_cov);
-	*ret_code = 0;
 }
+
+#ifdef __cplusplus
+} // extern C
+#endif
+
+
+// global variables for conditional simulation that are needed both, for initialization as well as for generating realizations
+struct cond2_state {
+	cufftComplex *d_cov; 
+	int nx,ny,n,m;
+	float xmin,xmax,ymin,ymax,dx,dy;
+	float range, sill, nugget;
+	int blockSize,numBlocks;
+	dim3 blockSize2, numBlocks2;
+	cufftHandle plan1;
+	dim3 blockSize2d;
+	dim3 blockCount2d;
+	dim3 blockSize1d;
+	dim3 blockCount1d;
+	dim3 blockSizeSamples;
+	dim3 blockCountSamples;
+	dim3 blockSizeSamplesPlus1;
+	dim3 blockCountSamplesPlus1;
+	// Variables for conditioning
+	int numSrc; // Number of sample observation
+	float2 *d_samplexy; // coordinates of samples
+	float2 *d_sampleindices; // Corresponding grid indices in subpixel accuracy
+	float *d_sampledata; // data values of samples
+	//float *d_covinv; // inverse covariance matrix of samples
+	float *d_uncond;
+	int covmodel;
+	int k;
+} cond2_global;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+
+
+
+
+
+void EXPORT conditionalSim2Init(float *p_xmin, float *p_xmax, int *p_nx, float *p_ymin, float *p_ymax, int *p_ny, float *p_sill, float *p_range, float *p_nugget, float *p_srcXY, float *p_srcData, int *p_numSrc, int *p_covmodel, int *do_check, int *ret_code) {
+	*ret_code = OK;
+	cudaError_t cudaStatus;
+	cublasInit();
+
+	cond2_global.nx= *p_nx; // Number of cols
+	cond2_global.ny= *p_ny; // Number of rows
+	cond2_global.n= 2*cond2_global.nx; // Number of cols
+	cond2_global.m= 2*cond2_global.ny; // Number of rows
+	cond2_global.dx = (*p_xmax - *p_xmin) / (cond2_global.nx - 1);
+	cond2_global.dy = (*p_ymax - *p_ymin) / (cond2_global.ny - 1);
+	cond2_global.numSrc = *p_numSrc;
+	cond2_global.xmin = *p_xmin;
+	cond2_global.xmax = *p_xmax;
+	cond2_global.ymin = *p_ymin;
+	cond2_global.ymax = *p_ymax;
+	cond2_global.range = *p_range;
+	cond2_global.sill = *p_sill;
+	cond2_global.nugget = *p_nugget;
+	cond2_global.covmodel = *p_covmodel;
+
+	// 1d cuda grid
+	cond2_global.blockSize1d = dim3(256);
+	cond2_global.blockCount1d = dim3(cond2_global.n*cond2_global.m / cond2_global.blockSize1d.x);
+	if (cond2_global.n * cond2_global.m % cond2_global.blockSize1d.x  != 0) ++cond2_global.blockCount1d.x;
+	
+	// 2d cuda grid
+	cond2_global.blockSize2d = dim3(16,16);
+	cond2_global.blockCount2d = dim3(cond2_global.n / cond2_global.blockSize2d.x, cond2_global.m / cond2_global.blockSize2d.y);
+	if (cond2_global.n % cond2_global.blockSize2d.x != 0) ++cond2_global.blockCount2d.x;
+	if (cond2_global.m % cond2_global.blockSize2d.y != 0) ++cond2_global.blockCount2d.y;
+
+	// 1d cuda grid for samples
+	cond2_global.blockSizeSamples = dim3(256);
+	cond2_global.blockCountSamples = dim3(cond2_global.numSrc / cond2_global.blockSizeSamples.x);
+	if (cond2_global.numSrc % cond2_global.blockSizeSamples.x !=0) ++cond2_global.blockCountSamples.x;
+
+	// Setup fft
+	//cufftPlan2d(&cond2_global.plan1, cond2_global.n, cond2_global.m, CUFFT_C2C); // n und m vertauscht weil col major grid
+	cufftPlan2d(&cond2_global.plan1, cond2_global.m, cond2_global.n, CUFFT_C2C); // n und m vertauscht weil col major grid
+
+	
+	// Build grid (ROW MAJOR)
+	cufftComplex *h_grid_c = (cufftComplex*)malloc(sizeof(cufftComplex)*cond2_global.m*cond2_global.n);
+	for (int i=0; i<cond2_global.n; ++i) { // i = col index
+		for (int j=0; j<cond2_global.m; ++j) { // j = row index
+			h_grid_c[j*cond2_global.n+i].x = *p_xmin + (i+1) * cond2_global.dx; 
+			h_grid_c[j*cond2_global.n+i].y = *p_ymin + (j+1) * cond2_global.dy; 
+		}
+	}
+
+	
+	float xc = *p_xmin + (cond2_global.dx*cond2_global.n)/2;
+	float yc = *p_ymin + (cond2_global.dy*cond2_global.m)/2;
+	cufftComplex *d_grid;
+	
+	// Allocate grid and cov arrays on GPU
+	cudaStatus = cudaMalloc((void**)&d_grid,sizeof(cufftComplex)*cond2_global.n*cond2_global.m);
+	cudaStatus = cudaMalloc((void**)&cond2_global.d_cov,sizeof(cufftComplex)*cond2_global.n*cond2_global.m);
+
+	// Sample covariance and generate "trick" grid
+	cufftComplex *d_trick_grid_c;
+	cudaStatus = cudaMalloc((void**)&d_trick_grid_c,sizeof(cufftComplex)*cond2_global.n*cond2_global.m);
+	
+	// Copy grid to gpu
+	cudaStatus = cudaMemcpy(d_grid,h_grid_c, cond2_global.n*cond2_global.m*sizeof(cufftComplex),cudaMemcpyHostToDevice);
+	
+	switch(cond2_global.covmodel) {
+	case EXP:
+		sampleCovExpKernel<<<cond2_global.blockCount2d, cond2_global.blockSize2d>>>(d_trick_grid_c, d_grid, cond2_global.d_cov, xc, yc, cond2_global.sill, cond2_global.range, cond2_global.nugget, cond2_global.n,cond2_global.m);
+		break;
+	case GAU:
+		sampleCovGauKernel<<<cond2_global.blockCount2d, cond2_global.blockSize2d>>>(d_trick_grid_c, d_grid, cond2_global.d_cov, xc, yc, cond2_global.sill, cond2_global.range, cond2_global.nugget, cond2_global.n,cond2_global.m);
+		break;
+	case SPH:
+		sampleCovSphKernel<<<cond2_global.blockCount2d, cond2_global.blockSize2d>>>(d_trick_grid_c, d_grid, cond2_global.d_cov, xc, yc, cond2_global.sill, cond2_global.range, cond2_global.nugget, cond2_global.n,cond2_global.m);
+		break;
+	}
+
+	free(h_grid_c);
+	cudaFree(d_grid);
+
+
+	// Compute spectral representation of cov and "trick" grid
+	cufftExecC2C(cond2_global.plan1, cond2_global.d_cov, cond2_global.d_cov, CUFFT_FORWARD); // in place fft forward
+	cufftExecC2C(cond2_global.plan1, d_trick_grid_c, d_trick_grid_c, CUFFT_FORWARD); // in place fft forwar
+
+	// Multiplication of fft(trick_grid) with n*m	
+	multKernel<<<cond2_global.blockCount1d, cond2_global.blockSize1d>>>(d_trick_grid_c, cond2_global.n, cond2_global.m);
+	cudaStatus = cudaThreadSynchronize();
+	if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching multKernel!\n", cudaStatus);	
+
+	// Devide spectral cov grid by fft of "trick" grid
+	divideSpectrumKernel<<<cond2_global.blockCount1d, cond2_global.blockSize1d>>>(cond2_global.d_cov, d_trick_grid_c);	
+	cudaStatus = cudaThreadSynchronize();
+	if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching divideSpectrumKernel!\n", cudaStatus);	
+	cudaFree(d_trick_grid_c);
+
+	// Copy to host and check for negative real parts
+	if (*do_check) {
+		cufftComplex *h_cov = (cufftComplex*)malloc(sizeof(cufftComplex)*cond2_global.n*cond2_global.m);
+		cudaStatus = cudaMemcpy(h_cov,cond2_global.d_cov,sizeof(cufftComplex)*cond2_global.n*cond2_global.m,cudaMemcpyDeviceToHost);
+		for (int i=0; i<cond2_global.n*cond2_global.m; ++i) {
+			if (h_cov[i].x < 0.0) {
+				*ret_code = ERROR_NEGATIVE_COV_VALUES; 
+				free(h_cov);
+				cudaFree(cond2_global.d_cov);
+				return;
+			}	
+		}
+		free(h_cov);
+	}
+
+	// Compute sqrt of spectral cov grid
+	sqrtKernel<<<cond2_global.blockCount1d, cond2_global.blockSize1d>>>(cond2_global.d_cov);
+	cudaStatus = cudaThreadSynchronize();
+	if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching sqrtKernel\n", cudaStatus);
+
+	// Copy samples to gpu
+	cudaStatus = cudaMalloc((void**)&cond2_global.d_samplexy,sizeof(float2)* cond2_global.numSrc); 
+	if (cudaStatus != cudaSuccess)  printf("cudaMalloc returned error code %d\n", cudaStatus);
+	cudaStatus = cudaMalloc((void**)&cond2_global.d_sampleindices,sizeof(float2)*cond2_global.numSrc); 
+	if (cudaStatus != cudaSuccess)  printf("cudaMalloc returned error code %d\n", cudaStatus);
+	cudaStatus = cudaMalloc((void**)&cond2_global.d_sampledata,sizeof(float)*cond2_global.numSrc); 
+	if (cudaStatus != cudaSuccess)  printf("cudaMalloc returned error code %d\n", cudaStatus);
+	cudaMemcpy(cond2_global.d_samplexy,p_srcXY,sizeof(float2)* cond2_global.numSrc,cudaMemcpyHostToDevice);
+	cudaMemcpy(cond2_global.d_sampledata,p_srcData,sizeof(float)*cond2_global.numSrc,cudaMemcpyHostToDevice);
+		
+
+	// Overlay samples to grid and save resulting subpixel grind indices
+	overlay<<<cond2_global.blockCountSamples,cond2_global.blockSizeSamples>>>(cond2_global.d_sampleindices,cond2_global.d_samplexy,*p_xmin,cond2_global.dx,*p_ymax,cond2_global.dy, cond2_global.numSrc);
+	cudaStatus = cudaThreadSynchronize();
+	if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching overlay!\n", cudaStatus);	
+	// Warning: It is not checked, whether sample points truly lie inside the grid's boundaries. This may lead to illegal memory access			
+
+	/* TEST OUTPUT ON HOST */
+	/*float2 *h_indices = (float2*)malloc(sizeof(float2)*cond2_global.numSrc);
+	cudaMemcpy(h_indices,cond2_global.d_sampleindices,sizeof(float2)*cond2_global.numSrc,cudaMemcpyDeviceToHost);
+	for (int i=0;i<cond2_global.numSrc;++i) {
+		printf("(%.2f,%.2f) -> (%.2f,%.2f)\n",p_srcXY[2*i],p_srcXY[2*i+1],h_indices[i].x, h_indices[i].y);
+	}
+	free(h_indices);*/
+}
+
+// Generates Unconditional Realizations and the residuals of all samples to all realizations 
+// p_out = output matrix of residuals, col means number of realization, row represents a sample point
+// p_k = Number of realizations
+// ret_code = return code: 0=ok
+void EXPORT conditionalSim2UncondResiduals(float *p_out, int *p_k, int *ret_code) {
+	*ret_code = OK;
+	cudaError_t cudaStatus;
+	
+	cond2_global.k = *p_k;
+	
+	float *d_rand; // Device Random Numbers
+	curandGenerator_t curandGen;
+	cufftComplex *d_fftrand;
+	cufftComplex* d_amp;	
+	float *d_residuals; // residuals of samples and underlying unconditional realization
+	
+	curandCreateGenerator(&curandGen, CURAND_RNG_PSEUDO_DEFAULT);
+	curandSetPseudoRandomGeneratorSeed(curandGen,(unsigned long long)(time(NULL)));	
+	
+	cudaStatus = cudaMalloc((void**)&d_rand,sizeof(float)*cond2_global.m*cond2_global.n); 
+	if (cudaStatus != cudaSuccess)  printf("cudaMalloc returned error code %d\n", cudaStatus);
+	cudaStatus = cudaMalloc((void**)&d_fftrand,sizeof(cufftComplex) * cond2_global.n * cond2_global.m); 
+	if (cudaStatus != cudaSuccess)  printf("cudaMalloc returned error code %d\n", cudaStatus);
+	cudaMalloc((void**)&d_amp,sizeof(cufftComplex)*cond2_global.n*cond2_global.m);
+	cudaMalloc((void**)&cond2_global.d_uncond,sizeof(float)*cond2_global.nx*cond2_global.ny * cond2_global.k);
+	cudaMalloc((void**)&d_residuals,sizeof(float)* (cond2_global.numSrc + 1));
+		
+	for(int l=0; l<cond2_global.k; ++l) {
+			
+		
+		curandGenerateNormal(curandGen,d_rand,cond2_global.m*cond2_global.n,0.0,1.0);	
+		realToComplexKernel<<< cond2_global.blockCount1d, cond2_global.blockSize1d>>>(d_fftrand, d_rand, cond2_global.n*cond2_global.m);
+		cudaStatus = cudaThreadSynchronize();
+		if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching realToComplexKernel!\n", cudaStatus);	
+		cufftExecC2C(cond2_global.plan1, d_fftrand, d_fftrand, CUFFT_FORWARD); // in place fft forward
+		cudaStatus = cudaThreadSynchronize();
+		
+		elementProduct<<<cond2_global.blockCount1d, cond2_global.blockSize1d>>>(d_amp, cond2_global.d_cov, d_fftrand, cond2_global.m*cond2_global.n);
+    
+		cudaStatus = cudaThreadSynchronize();
+		if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching elementProduct!\n", cudaStatus);
+
+		cufftExecC2C(cond2_global.plan1, d_amp, d_amp, CUFFT_INVERSE); // in place fft inverse for simulation
+	  
+		dim3 blockSize2dhalf  = dim3(16,16);
+		dim3 blockCount2dhalf = dim3(cond2_global.nx/blockSize2dhalf.x,cond2_global.ny/blockSize2dhalf.y);
+		if (cond2_global.nx % blockSize2dhalf.x != 0) ++blockCount2dhalf.x;
+		if (cond2_global.ny % blockSize2dhalf.y != 0) ++blockCount2dhalf.y;
+		ReDiv<<<blockCount2dhalf, blockSize2dhalf>>>(cond2_global.d_uncond + l*cond2_global.nx*cond2_global.ny, d_amp, std::sqrt((float)(cond2_global.n*cond2_global.m)), cond2_global.nx, cond2_global.ny, cond2_global.m);
+		cudaStatus = cudaThreadSynchronize();	
+		if (cudaStatus != cudaSuccess) printf("cudaThreadSynchronize returned error code %d after launching ReDiv!\n", cudaStatus);
+		
+		// d_uncond is now a unconditional realization 
+		// Compute residuals between samples and d_uncond
+		residuals<<<cond2_global.blockCountSamples,cond2_global.blockSizeSamples>>>(d_residuals,cond2_global.d_sampledata,cond2_global.d_uncond+l*(cond2_global.nx*cond2_global.ny),cond2_global.d_sampleindices,cond2_global.nx,cond2_global.ny,cond2_global.numSrc);
+		cudaStatus = cudaThreadSynchronize();	
+		if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching residuals!\n", cudaStatus);
+		
+		// Copy residuals to R, col major...
+		cudaMemcpy((p_out + l*(cond2_global.numSrc + 1)),d_residuals,sizeof(float)* (cond2_global.numSrc + 1),cudaMemcpyDeviceToHost);	
+
+	}
+	curandDestroyGenerator(curandGen);
+	
+	cudaFree(d_rand);
+	cudaFree(d_fftrand);
+	cudaFree(d_amp);
+	cudaFree(d_residuals);
+}
+
+// Generates conditional realizations
+// p_out = output array of size nx*ny*k * sizeof(float)
+// p_k = Number of realizations
+// ret_code = return code: 0=ok
+void EXPORT conditionalSim2KrigeResiduals(float *p_out, int *p_y, int *ret_code)
+{
+	*ret_code = OK;
+	cudaError_t cudaStatus = cudaSuccess;
+	
+	
+	float *d_y; // result vector from solving the kriging equation system
+	float *d_respred; // interpolated residuals
+	
+
+	for(int l = 0; l<cond2_global.k; ++l) {
+						
+		if (l==0)  cudaMalloc((void**)&d_y, sizeof(float) * (cond2_global.numSrc + 1));
+		cudaMemcpy(d_y, p_y + l*(cond2_global.numSrc + 1), sizeof(float) * (cond2_global.numSrc + 1),cudaMemcpyHostToDevice);		
+		
+		// Kriging prediction
+		if (l==0)  cudaMalloc((void**)&d_respred, sizeof(float) * cond2_global.nx * cond2_global.ny);
+		dim3 blockSizeKrige = dim3(BLOCK_SIZE_KRIGE1);
+		dim3 blockCntKrige = dim3((cond2_global.nx*cond2_global.ny) / blockSizeKrige.x);
+		if ((cond2_global.nx*cond2_global.ny) % blockSizeKrige.x != 0) ++blockCntKrige.x;
+
+
+		switch(cond2_global.covmodel) {
+		case EXP:
+			krigingExpKernel<<<blockCntKrige, blockSizeKrige>>>(d_respred,cond2_global.d_samplexy,cond2_global.xmin,cond2_global.dx,cond2_global.ymin,cond2_global.dy,d_y,cond2_global.range,cond2_global.sill,cond2_global.nugget,cond2_global.numSrc,cond2_global.nx,cond2_global.ny);
+			break;
+		case GAU:
+			krigingGauKernel<<<blockCntKrige, blockSizeKrige>>>(d_respred,cond2_global.d_samplexy,cond2_global.xmin,cond2_global.dx,cond2_global.ymin,cond2_global.dy,d_y,cond2_global.range,cond2_global.sill,cond2_global.nugget,cond2_global.numSrc,cond2_global.nx,cond2_global.ny);
+			break;
+		case SPH:
+			krigingSphKernel<<<blockCntKrige, blockSizeKrige>>>(d_respred,cond2_global.d_samplexy,cond2_global.xmin,cond2_global.dx,cond2_global.ymin,cond2_global.dy,d_y,cond2_global.range,cond2_global.sill,cond2_global.nugget,cond2_global.numSrc,cond2_global.nx,cond2_global.ny);
+			break;
+		}
+
+
+		if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching krigingExpKernel!\n", cudaStatus);
+		
+		// Add result to unconditional realization
+		dim3 blockSizeCond = dim3(256);
+		dim3 blockCntCond = dim3(cond2_global.nx*cond2_global.ny/ blockSizeCond.x);
+		if (cond2_global.nx*cond2_global.ny % blockSizeCond.x != 0) ++blockSizeCond.x;
+		addResSim<<<blockCntCond,blockSizeCond>>>(d_respred, cond2_global.d_uncond + l*cond2_global.nx*cond2_global.ny, cond2_global.nx*cond2_global.ny);
+		if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching addResSim!\n", cudaStatus);
+		
+		// Write Result to R
+		cudaMemcpy((p_out + l*(cond2_global.nx*cond2_global.ny)),d_respred,sizeof(float)*cond2_global.nx*cond2_global.ny,cudaMemcpyDeviceToHost);		
+		
+	}
+
+	cudaFree(d_y);
+	cudaFree(d_respred);
+}
+
+
+
+void EXPORT conditionalSim2Release(int *ret_code) {
+	*ret_code = OK;
+	cufftDestroy(cond2_global.plan1);
+	cudaFree(cond2_global.d_samplexy);
+	cudaFree(cond2_global.d_sampledata);
+	cudaFree(cond2_global.d_sampleindices);
+	cudaFree(cond2_global.d_cov);
+	cudaFree(cond2_global.d_uncond);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 #ifdef __cplusplus
 } // extern C
@@ -1019,7 +1550,7 @@ extern "C" {
 
 
 	void EXPORT conditioningInit(float *p_xmin, float *p_xmax, int *p_nx, float *p_ymin, float *p_ymax, int *p_ny, float *p_sill, float *p_range, float *p_nugget, float *p_srcXY, float *p_srcData, int *p_numSrc, float *p_cov_inv, int *p_k, float *p_uncond, int *p_covmodel, int *ret_code) {
-		*ret_code = 1;
+		*ret_code = OK;
 		cudaError_t cudaStatus;
 		cublasInit();
 
@@ -1027,8 +1558,8 @@ extern "C" {
 		conditioning_global.ny= *p_ny; // Number of rows
 		conditioning_global.n= 2*conditioning_global.nx; // Number of cols
 		conditioning_global.m= 2*conditioning_global.ny; // Number of rows
-		conditioning_global.dx = (*p_xmax - *p_xmin) / conditioning_global.nx;
-		conditioning_global.dy = (*p_ymax - *p_ymin) / conditioning_global.ny;
+		conditioning_global.dx = (*p_xmax - *p_xmin) / (conditioning_global.nx-1);
+		conditioning_global.dy = (*p_ymax - *p_ymin) / (conditioning_global.ny-1);
 		conditioning_global.numSrc = *p_numSrc;
 		conditioning_global.xmin = *p_xmin;
 		conditioning_global.xmax = *p_xmax;
@@ -1083,7 +1614,6 @@ extern "C" {
 		int size = sizeof(float) * conditioning_global.nx * conditioning_global.ny * conditioning_global.k;
 		cudaMalloc((void**)&conditioning_global.d_uncond,size);
 		cudaMemcpy(conditioning_global.d_uncond,p_uncond,size,cudaMemcpyHostToDevice);
-		*ret_code = 0;
 	}
 
 
@@ -1091,7 +1621,7 @@ extern "C" {
 	// p_out = output array of size nx*ny*k * sizeof(float)
 	// ret_code = return code: 0=ok
 	void EXPORT conditioningRealizations(float *p_out, int *ret_code) {
-		*ret_code = 1;
+		*ret_code = OK;
 		cudaError_t cudaStatus;
 	
 			
@@ -1149,17 +1679,15 @@ extern "C" {
 		cudaFree(d_y);
 		cudaFree(d_respred);
 		cudaFree(d_residuals);
-		*ret_code = 0;
 	}
 
 	void EXPORT conditioningRelease(int *ret_code) {
-		*ret_code = 1;
+		*ret_code = OK;
 		cudaFree(conditioning_global.d_uncond);
 		cudaFree(conditioning_global.d_covinv);
 		cudaFree(conditioning_global.d_samplexy);
 		cudaFree(conditioning_global.d_sampledata);
 		cudaFree(conditioning_global.d_sampleindices);
-		*ret_code = 0;
 	}
 
 
@@ -1174,24 +1702,43 @@ extern "C" {
 ********************************************************************************************/
 int main()
 {	
-    
+
 	int count = -1;
 	cudaGetDeviceCount(&count);
 	std::cout << "Anzahl devices: " << count << "\n";
 
 	int result = -1;
-	init(&result);
+	initSim(&result);
+
+	int docheck = 0;
 
 		
-	// Test conditional simulation
+	// Test (un)conditional simulation
 	{
 		float xmin = 0, xmax = 100, ymin = 0, ymax = 100;
-		int nx = 100, ny = 100;
+		int nx = 4, ny = 4;
 		int covmodel = EXP;
-		float nugget=0, range=0.1, sill = 1;
+		float nugget=0, range=30, sill = 1;
 		int k = 5;
 
-		int numSrc = 10;
+		int ret;
+		unconditionalSimInit(&xmin,&xmax,&nx,&ymin,&ymax,&ny,&sill,&range,&nugget,&covmodel,&docheck,&ret);
+		printf("Errorcode: %i\n",ret);
+		float *uncond = (float*)malloc(sizeof(float)*nx*ny*k);
+		unconditionalSimRealizations(uncond,&k,&ret);
+		printf("Errorcode: %i\n",ret);	
+		unconditionalSimRelease(&ret);
+		printf("Errorcode: %i\n",ret);	
+
+		// write results to csv file for testing purpose
+		for (int l=0; l<k; ++l) {
+			std::stringstream ss;
+			ss << "C:\\fft\\uncond" << l << ".csv";
+			writeCSVMatrix(ss.str().c_str(),uncond + l*nx*ny,nx,ny);		
+		}
+		free(uncond);
+
+		/*int numSrc = 10;
 		float srcxy[] = {64.56559,83.00241,56.55997,66.50534,31.32781,40.72709,39.21148,57.04371,63.70436,69.80745,49.43141,11.15070,17.64743,62.95207,65.10820,83.82076,74.04069,60.73463,74.86754,73.68782};
 		float srcdata[] = {98.98939,103.25515,100.31433,108.50051,78.91263,117.80599,104.18466,105.06300,109.77029,102.14903}; 
 		
@@ -1234,7 +1781,7 @@ int main()
 			ss << "C:\\fft\\real" << l << ".csv";
 			writeCSVMatrix(ss.str().c_str(),cond + l*nx*ny,nx,ny);		
 		}
-		free(cond);
+		free(cond);*/
 	}
 
 	system("PAUSE");

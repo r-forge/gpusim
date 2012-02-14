@@ -1,2 +1,2 @@
-
+2011-12-04: - Performance of conditional simulation improved, the sample covariance matrix is not any longer inverted by solve(), solve() is only used for solving the equation system of the sample covariance matrix and the data residuals to the unconditional realizations.
 2011-11-22: - First draft commited to Rforge svn

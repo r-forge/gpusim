@@ -1,7 +1,12 @@
-
-
- gpuSim <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, as.sp = FALSE) {
-
+ 
+ # Error codes must be in accordance to c code
+ gpuSimCatchError <- function(code) {
+	messages = c("successful", "fft of covariance matrix contains negative real parts", "unknown error returned")
+	return (messages[code+1])
+ }
+ 
+ 
+ gpuSim <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, as.sp = FALSE, fullinvert = FALSE, check = FALSE) {
 	out = 0
  
 	if (missing(grid)) {
@@ -52,13 +57,9 @@
 		if (length(samples@data) != 1) {
 			stop("Error: samples contain more than one data field!")
 		}
-		srcData <- as.vector(samples@data[,1])
-		
-		## Get distance matrix -> cov matrix -> inverse cov matrix
-		d <- spDists(samples,samples) ## Abstandsmatrix der Source Points untereinander
-		cov <- covExponential(d, sill, range, nugget)	
-			
-		# Aus Abstandsmatrix->Kovarianzmatrix
+		srcData <- as.vector(samples@data[,1])	
+		cov <- dCov2d(coordinates(samples),covmodel,sill,range,nugget)
+	
 		un = c(rep(1, numSrc),0)
 		rn = rep(1, numSrc)
 		cov.l = cbind(cov,rn)
@@ -67,18 +68,19 @@
 		
 		retcode = 0
 		result = .C("conditioningInit", as.single(xmin), as.single(xmax), as.integer(nx), as.single(ymin),as.single(ymax), as.integer(ny), as.single(sill), as.single(range), as.single(nugget), as.single(srcXY), as.single(srcData), as.integer(numSrc), as.single(cov.l.inv), as.integer(k), as.single(uncond), as.integer(covID(covmodel)), retcode = as.integer(retcode),PACKAGE="gpusim")
-		if (result$retcode != 0) stop("Error: Initialization of conditioning returned error!")
+		if (result$retcode != 0) stop(paste("Initialization of conditioning returned error:",gpuSimCatchError(result$retcode)))
 		res = .C("conditioningRealizations", out=single(nx*ny*k), retcode = as.integer(retcode), PACKAGE="gpusim")
-		if (res$retcode != 0) stop("Error: Generation of realizations returned error!")
+		if (res$retcode != 0) stop(paste("Generation of realizations returned error:", gpuSimCatchError(result$retcode)))
 		result = .C("conditioningRelease", retcode = as.integer(retcode),PACKAGE="gpusim")
-		if (result$retcode != 0) stop("Error: Release of simulation returned error")
+		if (result$retcode != 0) stop(paste("Releasing memory for simulation returned error:" , gpuSimCatchError(result$retcode)))
 		
 		if (as.sp == FALSE) {
 			out = as.vector(res$out)
 			dim(out) = c(nx,ny,k)
 		}
 		else {
-			out = SpatialPixelsDataFrame(coordinates(grid),as.data.frame(matrix(res$out,ncol = k,nrow = nx*ny)))			
+			out = SpatialPixelsDataFrame(coordinates(grid),as.data.frame(matrix(res$out,ncol = k,nrow = nx*ny)))	
+			names(out@data) = paste("sim",1:k,sep="")
 		}
 		
 		
@@ -106,8 +108,7 @@
 		ny = grid@cells.dim[2]
 		xmax = xmin + nx * dx
 		ymax = ymin + ny * dy	
-		
-
+	
 		srcXY  <- as.vector(t(coordinates(samples)))
 		numSrc = length(srcXY) / 2
 		
@@ -116,35 +117,59 @@
 		}
 		srcData <- as.vector(samples@data[,1])
 		
-		## Get distance matrix -> cov matrix -> inverse cov matrix
-		d <- spDists(samples,samples) ## Abstandsmatrix der Source Points untereinander
-		cov <- covExponential(d, sill, range, nugget)	#
+		# Get covariance matrix from sample points
+		cov <- dCov2d(coordinates(samples),covmodel,sill,range,nugget)
 		
-		# Aus Abstandsmatrix->Kovarianzmatrix
 		un = c(rep(1, numSrc),0)
 		rn = rep(1, numSrc)
 		cov.l = cbind(cov,rn)
 		cov.l = rbind(cov.l,un)
-		cov.l.inv = solve(cov.l)
+		
+		res <- 0
+		
+		if (fullinvert) {
+			cov.l.inv = solve(cov.l)
 					
-		retcode = 0
-		result = .C("conditionalSimInit", as.single(xmin), as.single(xmax), as.integer(nx), as.single(ymin),as.single(ymax), as.integer(ny), as.single(sill), as.single(range), as.single(nugget), as.single(srcXY), as.single(srcData), as.integer(numSrc), as.single(cov.l.inv), as.integer(covID(covmodel)),retcode = as.integer(retcode), PACKAGE="gpusim")
-		if (result$retcode != 0) stop("Error: Initialization of conditional simulation returned error!")
-		res = .C("conditionalSimRealizations", out=single(nx*ny*k), as.integer(k),retcode = as.integer(retcode), PACKAGE="gpusim")
-		if (res$retcode != 0) stop("Error: Generation of realizations returned error!")
-		result = .C("conditionalSimRelease",retcode = as.integer(retcode),PACKAGE="gpusim")	
-		if (result$retcode != 0) stop("Error: Release of simulation returned error")	
+			retcode = 0
+			result = .C("conditionalSimInit", as.single(xmin), as.single(xmax), as.integer(nx), as.single(ymin),as.single(ymax), as.integer(ny), as.single(sill), as.single(range), as.single(nugget), as.single(srcXY), as.single(srcData), as.integer(numSrc), as.single(cov.l.inv), as.integer(covID(covmodel)), as.integer(check), retcode = as.integer(retcode), PACKAGE="gpusim")
+			if (result$retcode != 0) stop(paste("Initialization of conditional simulation returned error: ",gpuSimCatchError(result$retcode)))
+			res = .C("conditionalSimRealizations", out=single(nx*ny*k), as.integer(k),retcode = as.integer(result$retcode), PACKAGE="gpusim")
+			if (result$retcode != 0) stop(paste("Generation of realizations for conditional simulation returned error: ", gpuSimCatchError(result$retcode)))
+			result = .C("conditionalSimRelease",retcode = as.integer(retcode),PACKAGE="gpusim")	
+			if (result$retcode != 0) stop(paste("Releasing memory for simulation returned error: ",gpuSimCatchError(result$retcode)))
+		}
+		
+		else {			
+			retcode = 0
+			result = .C("conditionalSim2Init", as.single(xmin), as.single(xmax), as.integer(nx), as.single(ymin),as.single(ymax), as.integer(ny), as.single(sill), as.single(range), as.single(nugget), as.single(srcXY), as.single(srcData), as.integer(numSrc), as.integer(covID(covmodel)), as.integer(check), retcode = as.integer(retcode), PACKAGE="gpusim")
+			if (result$retcode != 0) stop(paste("Initialization of conditional simulation returned error: ",gpuSimCatchError(result$retcode)))
+			
+			# generate all unconditional realizations and get their residuals to the data
+			res = .C("conditionalSim2UncondResiduals", out=single((numSrc + 1) * k), as.integer(k),retcode = as.integer(retcode), PACKAGE="gpusim")
+			if (result$retcode != 0) stop(paste("Computation of residuals between generated unconditional realizations and given data returned error: ",gpuSimCatchError(result$retcode)))
+			
+			# solve residual equation system
+			dim(res$out) = c(numSrc+1,k)
+			y = solve(cov.l, res$out)		
+			
+			# interpolate residuals and add it to the unconditional realizations
+			res = .C("conditionalSim2KrigeResiduals", out=single(nx*ny*k), as.single(y),retcode = as.integer(retcode), PACKAGE="gpusim")
+			if (result$retcode != 0) stop(paste("Generation of realizations for conditional simulation returned error: ",gpuSimCatchError(result$retcode)))
+			
+			# clean up
+			result = .C("conditionalSim2Release",retcode = as.integer(retcode),PACKAGE="gpusim")	
+			if (result$retcode != 0) stop(paste("Releasing memory for conditional simulation returned error: ",gpuSimCatchError(result$retcode)))
+			
+		}
 
 		if (as.sp == FALSE) {
 			out = as.vector(res$out)
 			dim(out) = c(nx,ny,k)
 		}
 		else {
-			out = SpatialPixelsDataFrame(coordinates(grid),as.data.frame(matrix(res$out,ncol = k,nrow = nx*ny)))			
-		}		
-		
-		
-		
+			out = SpatialPixelsDataFrame(coordinates(grid),as.data.frame(matrix(res$out,ncol = k,nrow = nx*ny)))
+			names(out@data) = paste("sim",1:k,sep="")
+		}				
 	}
 	else if (!missing(k)) {
 		#uncond sim
@@ -168,27 +193,25 @@
 		
 		
 		retcode = 0
-		result = .C("unconditionalSimInit", as.single(xmin), as.single(xmax), as.integer(nx), as.single(ymin),as.single(ymax), as.integer(ny), as.single(sill), as.single(range), as.single(nugget), as.integer(covID(covmodel)), retcode = as.integer(retcode), PACKAGE="gpusim")
-		if (result$retcode != 0) stop("Error: Initialization of unconditional simulation returned error!")
+		result = .C("unconditionalSimInit", as.single(xmin), as.single(xmax), as.integer(nx), as.single(ymin),as.single(ymax), as.integer(ny), as.single(sill), as.single(range), as.single(nugget), as.integer(covID(covmodel)), as.integer(check), retcode = as.integer(retcode), PACKAGE="gpusim")
+		if (result$retcode != 0) stop(paste("Initialization of unconditional simulation returned error: ",gpuSimCatchError(result$retcode)))			
 		res = .C("unconditionalSimRealizations", out=single(nx*ny*k), as.integer(k), retcode = as.integer(retcode), PACKAGE="gpusim")
-		if (res$retcode != 0) stop("Error: Generation of realizations returned error!")
+		if (result$retcode != 0) stop(paste("Generation of realizations for conditional simulation returned error: ",gpuSimCatchError(result$retcode)))
 		result = .C("unconditionalSimRelease", retcode = as.integer(retcode), PACKAGE="gpusim")
-		if (result$retcode != 0) stop("Error: Release of simulation returned error")	
-			
+		if (result$retcode != 0) stop(paste("Releasing memory for unconditional simulation returned error: ",gpuSimCatchError(result$retcode)))
+				
 		if (as.sp == FALSE) {
 			out = as.vector(res$out)
 			dim(out) = c(nx,ny,k)
 		}
 		else {
-			out = SpatialPixelsDataFrame(coordinates(grid),as.data.frame(matrix(res$out,ncol = k,nrow = nx*ny)))			
-		}
-				
-		
+			out = SpatialPixelsDataFrame(coordinates(grid),as.data.frame(matrix(res$out,ncol = k,nrow = nx*ny)))	
+			names(out@data) = paste("sim",1:k,sep="")
+		}		
 	}
 	else {
-		stop("Error: One or more required arguments missing!")
+		stop("Error: Missing one or more required arguments!")
 	}	
-	
 	return(out)	
 }
 
@@ -197,7 +220,8 @@
 
 
 
-gpuSimEval <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, as.sp = FALSE) {
+
+gpuSimEval <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, as.sp = FALSE, fullinvert=FALSE, check = FALSE) {
 
 	out = 0
 	
@@ -255,9 +279,8 @@ gpuSimEval <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, 
 		}
 		srcData <- as.vector(samples@data[,1])
 		
-		## Get distance matrix -> cov matrix -> inverse cov matrix
-		d <- spDists(samples,samples) ## Abstandsmatrix der Source Points untereinander
-		cov <- covExponential(d, sill, range, nugget)
+		# Get covariance matrix from sample points
+		cov <- dCov2d(coordinates(samples),covmodel,sill,range,nugget)
 			
 		# Aus Abstandsmatrix->Kovarianzmatrix
 		un = c(rep(1, numSrc),0)
@@ -265,6 +288,7 @@ gpuSimEval <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, 
 		cov.l = cbind(cov,rn)
 		cov.l = rbind(cov.l,un)
 		cov.l.inv = solve(cov.l)
+		#cov.l.inv = chol2inv(chol(cov.l))
 		
 		retcode = 0
 		time.gpupre = system.time(result <-.C("conditioningInit", as.single(xmin), as.single(xmax), as.integer(nx), as.single(ymin),as.single(ymax), as.integer(ny), as.single(sill), as.single(range), as.single(nugget), as.single(srcXY), as.single(srcData), as.integer(numSrc), as.single(cov.l.inv), as.integer(k), as.single(uncond), as.integer(covID(covmodel)),retcode = as.integer(retcode),PACKAGE="gpusim"))[3]
@@ -317,9 +341,8 @@ gpuSimEval <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, 
 		}
 		srcData <- as.vector(samples@data[,1])
 		
-		## Get distance matrix -> cov matrix -> inverse cov matrix
-		d <- spDists(samples,samples) ## Abstandsmatrix der Source Points untereinander
-		cov <- covExponential(d, sill, range, nugget)	
+		# Get covariance matrix from sample points
+		cov <- dCov2d(coordinates(samples),covmodel,sill,range,nugget)
 		
 			
 		# Aus Abstandsmatrix->Kovarianzmatrix
@@ -327,15 +350,40 @@ gpuSimEval <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, 
 		rn = rep(1, numSrc)
 		cov.l = cbind(cov,rn)
 		cov.l = rbind(cov.l,un)
-		cov.l.inv = solve(cov.l)
+	
+		res <- 0	
+		if (fullinvert) {
+			cov.l.inv = solve(cov.l)
+					
+			retcode = 0
+			time.gpupre = system.time(result <- .C("conditionalSimInit", as.single(xmin), as.single(xmax), as.integer(nx), as.single(ymin),as.single(ymax), as.integer(ny), as.single(sill), as.single(range), as.single(nugget), as.single(srcXY), as.single(srcData), as.integer(numSrc), as.single(cov.l.inv), as.integer(covID(covmodel)), as.integer(check) ,retcode = as.integer(retcode), PACKAGE="gpusim"))[3]
+			if (result$retcode != 0) stop("Error: Initialization of conditional simulation returned error!")	
+			time.gpureal = system.time(res <- .C("conditionalSimRealizations", out=single(nx*ny*k), as.integer(k),retcode = as.integer(retcode), PACKAGE="gpusim"))[3]
+			if (res$retcode != 0) stop("Error: Generation of realizations returned error!")
+			result <- .C("conditionalSimRelease",retcode = as.integer(retcode),PACKAGE="gpusim")	
+			if (result$retcode != 0) stop("Error: Release of simulation returned error")
+		}	
+		else {			
+			retcode = 0
+			time.gpupre = system.time(result <- .C("conditionalSim2Init", as.single(xmin), as.single(xmax), as.integer(nx), as.single(ymin),as.single(ymax), as.integer(ny), as.single(sill), as.single(range), as.single(nugget), as.single(srcXY), as.single(srcData), as.integer(numSrc), as.integer(covID(covmodel)), as.integer(check), retcode = as.integer(retcode), PACKAGE="gpusim"))[3]
+			if (result$retcode != 0) stop("Error: Initialization of conditional simulation returned error!")
 			
-		retcode = 0
-		time.gpupre = system.time(result <- .C("conditionalSimInit", as.single(xmin), as.single(xmax), as.integer(nx), as.single(ymin),as.single(ymax), as.integer(ny), as.single(sill), as.single(range), as.single(nugget), as.single(srcXY), as.single(srcData), as.integer(numSrc), as.single(cov.l.inv), as.integer(covID(covmodel)),retcode = as.integer(retcode), PACKAGE="gpusim"))[3]
-		if (result$retcode != 0) stop("Error: Initialization of conditional simulation returned error!")	
-		time.gpureal = system.time(res <- .C("conditionalSimRealizations", out=single(nx*ny*k), as.integer(k),retcode = as.integer(retcode), PACKAGE="gpusim"))[3]
-		if (res$retcode != 0) stop("Error: Generation of realizations returned error!")
-		result <- .C("conditionalSimRelease",retcode = as.integer(retcode),PACKAGE="gpusim")	
-		if (result$retcode != 0) stop("Error: Release of simulation returned error")
+			# generate all unconditional realizations and get their residuals to the data
+			time.gpureal = system.time(res <- .C("conditionalSim2UncondResiduals", out=single((numSrc + 1) * k), as.integer(k),retcode = as.integer(retcode), PACKAGE="gpusim"))[3]
+			if (res$retcode != 0) stop("Error: Generation of realizations returned error!")
+			
+			# solve residual equation system
+			dim(res$out) = c(numSrc+1,k)
+			y = solve(cov.l, res$out)		
+			
+			# interpolate residuals and add it to the unconditional realizations
+			time.gpureal = time.gpureal + system.time(res <- .C("conditionalSim2KrigeResiduals", out=single(nx*ny*k), as.single(y),retcode = as.integer(retcode), PACKAGE="gpusim"))[3]
+			if (res$retcode != 0) stop("Error: Generation of realizations returned error!")
+			
+			# clean up
+			result <- .C("conditionalSim2Release",retcode = as.integer(retcode),PACKAGE="gpusim")	
+			if (result$retcode != 0) stop("Error: Release of simulation returned error")	
+		}
 		
 		if (as.sp == FALSE) {
 			out = as.vector(res$out)
@@ -369,7 +417,7 @@ gpuSimEval <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, 
 		ymax = ymin + ny * dy	
 		
 		retcode = 0
-		time.gpupre = system.time(result <- .C("unconditionalSimInit", as.single(xmin), as.single(xmax), as.integer(nx), as.single(ymin),as.single(ymax), as.integer(ny), as.single(sill), as.single(range), as.single(nugget), as.integer(covID(covmodel)),retcode = as.integer(retcode), PACKAGE="gpusim"))[3]
+		time.gpupre = system.time(result <- .C("unconditionalSimInit", as.single(xmin), as.single(xmax), as.integer(nx), as.single(ymin),as.single(ymax), as.integer(ny), as.single(sill), as.single(range), as.single(nugget), as.integer(covID(covmodel)), as.integer(check), retcode = as.integer(retcode), PACKAGE="gpusim"))[3]
 		if (result$retcode != 0) stop("Error: Initialization of unconditional simulation returned error!")	
 		time.gpureal = system.time(res <- .C("unconditionalSimRealizations", out=single(nx*ny*k), as.integer(k),retcode = as.integer(retcode), PACKAGE="gpusim"))[3]
 		if (res$retcode != 0) stop("Error: Generation of realizations returned error!")
@@ -415,24 +463,44 @@ covID <- function(covmodel) {
 
 covExponential <- function(data, sill, range, nugget) {	
 	n = length(data)
-	res = .C("covExp", out=numeric(n), as.numeric(data), as.integer(n), as.numeric(sill), as.numeric(range), as.numeric(nugget), PACKAGE="gpusim")
+	res = .C("covExp", out=numeric(n), as.numeric(data), as.integer(n), as.numeric(sill), as.numeric(range), as.numeric(nugget), DUP=FALSE, PACKAGE="gpusim")
 	dim(res$out) = dim(data)
 	return(res$out)	
 }
 
 covGaussian <- function(data, sill, range, nugget) {	
 	n = length(data)
-	res = .C("covGau", out=numeric(n), as.numeric(data), as.integer(n), as.numeric(sill), as.numeric(range), as.numeric(nugget), PACKAGE="gpusim")
+	res = .C("covGau", out=numeric(n), as.numeric(data), as.integer(n), as.numeric(sill), as.numeric(range), as.numeric(nugget), DUP=FALSE, PACKAGE="gpusim")
 	dim(res$out) = dim(data)
 	return(res$out)
 }
 
 covSpherical <- function(data, sill, range, nugget) {	
 	n = length(data)
-	res = .C("covSph", out=numeric(n), as.numeric(data), as.integer(n), as.numeric(sill), as.numeric(range), as.numeric(nugget), PACKAGE="gpusim")
+	res = .C("covSph", out=numeric(n), as.numeric(data), as.integer(n), as.numeric(sill), as.numeric(range), as.numeric(nugget), DUP=FALSE, PACKAGE="gpusim")
 	dim(res$out) = dim(data)
 	return(res$out)
 }
+
+
+dCov2d <- function(data, model, sill, range, nugget) {
+	if (class(data) != "matrix") {
+		stop("Expected a matrix as input!")
+	}
+	n = nrow(data)
+	if (ncol(data) != 2) {
+		stop("Expected a matrix with exactly 2 columns!")
+	}
+	res = 0
+	if (model == "Exp") res = .C("dCovExp2d", out=numeric(n*n), as.numeric(data), as.integer(n), as.numeric(sill), as.numeric(range), as.numeric(nugget), DUP=FALSE, PACKAGE="gpusim")
+	else if (model == "Gau") res = .C("dCovGau2d", out=numeric(n*n), as.numeric(data), as.integer(n), as.numeric(sill), as.numeric(range), as.numeric(nugget), DUP=FALSE, PACKAGE="gpusim")	
+	else if (model == "Sph") res = .C("dCovSph2d", out=numeric(n*n), as.numeric(data), as.integer(n), as.numeric(sill), as.numeric(range), as.numeric(nugget), DUP=FALSE, PACKAGE="gpusim")
+	else stop("Unknown covariance model!")	
+	dim(res$out) = c(n,n)
+	return(res$out)
+}
+
+
 
 
 gpuBenchmark <- function(nx = 100, ny = 100, k = 100, range=2,sill=5,nugget=0) {

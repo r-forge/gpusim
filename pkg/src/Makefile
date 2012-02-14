@@ -1,4 +1,4 @@
-OBJ_FILES = sim.o
+OBJ_FILES = sim.o fft.o
 DLLOUT = gpusim.so
 
 CUDA_HOME = /usr/local/cuda
@@ -17,6 +17,9 @@ all: $(OBJ_FILES)
 
 sim.o: sim.cu
 	$(NVCC) -c sim.cu -o sim.o -I$(CUDA_INC_PATH) $(NVCC_FLAGS)
+	
+sim.o: fft.cu
+	$(NVCC) -c fft.cu -o fft.o -I$(CUDA_INC_PATH) $(NVCC_FLAGS)
 
 clean:
 	rm $(OBJ_FILES) gpusim.so

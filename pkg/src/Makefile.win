@@ -1,4 +1,4 @@
-OBJ_FILES = sim.obj 
+OBJ_FILES = sim.obj fft.obj
 DLLOUT = gpusim.dll
 VS_LIB = "C:/Program Files (x86)/Microsoft Visual Studio 10.0/VC/lib"  # CHECK
 
@@ -19,6 +19,9 @@ gpusim.dll: $(OBJ_FILES)
 
 sim.obj: sim.cu
 	nvcc -c sim.cu -o sim.obj -I"$(CUDA_INC_PATH)" $(NVCC_FLAGS)
-
+	
+fft.obj: fft.cu
+	nvcc -c fft.cu -o fft.obj -I"$(CUDA_INC_PATH)" $(NVCC_FLAGS)
+	
 clean:
 	rm $(OBJ_FILES) *.linkinfo gpusim.exp gpusim.lib gpusim.dll

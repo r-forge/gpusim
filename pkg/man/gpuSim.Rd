@@ -7,7 +7,7 @@ Performs (un)conditional simulation of gaussian random fields using NVIDIAs CUDA
 }
 
 \usage{
-gpuSim(grid, covmodel, sill, range, nugget, k, samples, uncond, as.sp = FALSE)
+gpuSim(grid, covmodel, sill, range, nugget, k, samples, uncond, as.sp = FALSE, fullinvert = FALSE, check = FALSE)
 }
 
 \arguments{
@@ -25,6 +25,9 @@ gpuSim(grid, covmodel, sill, range, nugget, k, samples, uncond, as.sp = FALSE)
 	\item{samples}{Sample points as a SpatialPointsDataFrame object containing exactly one data field which is used for conditioning. If this argument is missing, only unconditional simulation will be performed.}
 	\item{uncond}{Realizations of an unconditional simulation. Used together with \emph{samples} to condition previously computed realizations of an unconditional simulation using real sample data. The realizations can be given either as a three-dimensional array with the realization as third index or as a SpatialPixelsDataFrame object containing realizations as data fields. Note that you have to give the same covariance function which was used for generating the unconditional simulation in order to get meaningful results.}	
 	\item{as.sp}{TRUE or FALSE, should result be returned as SpatialPixelsDataFrame or as an simple array?}
+	\item{fullinvert}{TRUE or FALSE, should the sample covariance be inverted completely? Only relevant for conditional simulation, FALSE gives a better performance.}
+	\item{check}{TRUE or FALSE, should fft of covariance matrix be checked for negative real parts?}
+
 }
 
 \details{

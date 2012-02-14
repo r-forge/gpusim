@@ -4,10 +4,11 @@
  	library.dynam("gpusim", pkgname, libname)
  
 	## Initialize cuda device
-	init = .C("init", res = integer(1), PACKAGE="gpusim")
+	init = .C("initSim", res = integer(1), PACKAGE="gpusim")
 	if (init$res != 0) {
 		stop("Error: Initialization of CUDA device failed! Do you have a capable gpu and a properly installed CUDA runtime environment?")
 	}
+	.C("initFFT",PACKAGE="gpusim")
 }
 
 

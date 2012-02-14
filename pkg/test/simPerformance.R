@@ -9,17 +9,17 @@ library(fields)
 simPerformance <- function() {
 
 
-ITERATIONS = 2 # How often are computations repeated? Computation times will be averaged
-NUM_REALIZATIONS = c(10,50,100,250,500) ## Which numbers of realizations should be tested
-GRID_DIMS = c(100,200,300,400,500) ### Welche grid sized should be tested, note that the number of cells is squared to these numbers
+ITERATIONS = 5 # How often are computations repeated? Computation times will be averaged
+NUM_REALIZATIONS = c(10,25,50,100,250,500,1000) ## Which numbers of realizations should be tested
+GRID_DIMS = c(10,25,50,100,250,500,1000) ### Welche grid sized should be tested, note that the number of cells is squared to these numbers
 
 range = 2
 sill = 5
 nugget = 0
 xmin = 0
-xmax = 5
+xmax = 100
 ymin = 0
-ymax = 5
+ymax = 100
 	
 
 ## Result as matrices
@@ -65,18 +65,39 @@ for (i in 1:length(GRID_DIMS)) {
 
 
 		##### CPU PERFORMANCE fields #######
+		#timeCPU = 0	
+		#for (z in 1:ITERATIONS) {
+		#	temp = proc.time()[3]
+		#	grid<- list( x= seq( xmin,xmax,,nx), y= seq(ymin,ymax,,ny)) 
+		#	obj<-Exp.image.cov( grid=grid, theta=1/range, setup=TRUE)
+		#	for (t in 1:k){
+		#		try(sim.rf(obj))
+		#	}
+		#	timeCPU = timeCPU + (proc.time()[3] - temp)
+		#}
+		#timeCPU = timeCPU / ITERATIONS
+		#cat("Average computation time CPU: ")
+		#cat(timeCPU)
+		#cat("s\n")
+		#outCPU[i,j] = timeCPU
+
+
+
+
+		#### CPU PERFORMANCE RandomFields ######
+		model = "exponential"
+		#x <- c(xmin, xmax, dx) 
+		x = seq(xmin,xmax,dx)
+ 		#y <- c(ymin, ymax, dy)  
+ 		y = seq(ymin,ymax,dy)
 		timeCPU = 0	
 		for (z in 1:ITERATIONS) {
 			temp = proc.time()[3]
-			grid<- list( x= seq( xmin,xmax,,nx), y= seq(ymin,ymax,,ny)) 
-			obj<-Exp.image.cov( grid=grid, theta=1/range, setup=TRUE)
-			for (t in 1:k){
-				try(sim.rf(obj))
-			}
+			try(f <- GaussRF(grid=TRUE, x=x ,y=y, model=model,param=c(NA,sill-nugget,nugget,range),method="circulant embed", n=k))
 			timeCPU = timeCPU + (proc.time()[3] - temp)
 		}
 		timeCPU = timeCPU / ITERATIONS
-		cat("Average computation time CPU: ")
+		cat("Average computation time CPU RandomFields: ")
 		cat(timeCPU)
 		cat("s\n")
 		outCPU[i,j] = timeCPU
