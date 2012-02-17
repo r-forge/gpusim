@@ -1,10 +1,11 @@
  
- # Error codes must be in accordance to c code
- gpuSimCatchError <- function(code) {
-	messages = c("successful", "fft of covariance matrix contains negative real parts", "unknown error returned")
-	return (messages[code+1])
- }
  
+ gpuDeviceInfo <- function() {
+	cat("\n******** GPU DEVICE INFO ********\n")
+	result = .C("deviceInfo", out=format("",width=255),PACKAGE="gpusim")
+	cat(result$out)	
+	cat("*********************************\n\n")
+ }
  
  gpuSim <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, as.sp = FALSE, fullinvert = FALSE, check = FALSE) {
 	out = 0

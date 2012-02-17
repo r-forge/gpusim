@@ -211,11 +211,11 @@ __global__ void realToComplexKernel(cufftComplex *c, float* r, int n) {
 
 // If result has artefacts, change here...
 // Gets relevant real parts of 2nx x 2ny grid and devides it by div
-__global__ void ReDiv(float *out, cufftComplex *c, float div,int nx, int ny, int N) {
+__global__ void ReDiv(float *out, cufftComplex *c, float div,int nx, int ny, int M) {
 	int col = threadIdx.x + blockIdx.x * blockDim.x;
 	int row = threadIdx.y + blockIdx.y * blockDim.y;
 	//if (col < nx && row < ny) out[col*ny+row] = c[col*2*ny+row].x / div; 
-	if (col < nx && row < ny) out[row*nx+col] = c[row*N+col].x / div; 
+	if (col < nx && row < ny) out[row*nx+col] = c[row*M+col].x / div; 
 }
 
 
@@ -510,6 +510,14 @@ extern "C" {
 		}
 		*result = 0;
 	}
+
+	void EXPORT deviceInfo(char **info) {
+		cudaDeviceProp props;
+		cudaGetDeviceProperties(&props,0);
+		sprintf(info[0],"Device: %i - %s\nCUDA Version: %i.%i\nMultiprocessors: %i\nClock Frequency: %iMHz\nGlobal Memory: %iMiB\nShared Memory: %iKiB\nRegisters per Block: %i\nConstant Memory: %iKiB\n",
+		0,props.name,props.major,props.minor,props.multiProcessorCount,(int)(props.clockRate / 1000),(int)(props.totalGlobalMem/(1024*1024)),(int)(props.sharedMemPerBlock/(1024)),props.regsPerBlock,(int)(props.totalConstMem/1024));
+	}
+
 
 
 #ifdef __cplusplus
@@ -1350,7 +1358,6 @@ void EXPORT conditionalSim2Init(float *p_xmin, float *p_xmax, int *p_nx, float *
 void EXPORT conditionalSim2UncondResiduals(float *p_out, int *p_k, int *ret_code) {
 	*ret_code = OK;
 	cudaError_t cudaStatus;
-	
 	cond2_global.k = *p_k;
 	
 	float *d_rand; // Device Random Numbers
@@ -1391,7 +1398,7 @@ void EXPORT conditionalSim2UncondResiduals(float *p_out, int *p_k, int *ret_code
 		dim3 blockCount2dhalf = dim3(cond2_global.nx/blockSize2dhalf.x,cond2_global.ny/blockSize2dhalf.y);
 		if (cond2_global.nx % blockSize2dhalf.x != 0) ++blockCount2dhalf.x;
 		if (cond2_global.ny % blockSize2dhalf.y != 0) ++blockCount2dhalf.y;
-		ReDiv<<<blockCount2dhalf, blockSize2dhalf>>>(cond2_global.d_uncond + l*cond2_global.nx*cond2_global.ny, d_amp, std::sqrt((float)(cond2_global.n*cond2_global.m)), cond2_global.nx, cond2_global.ny, cond2_global.m);
+		ReDiv<<<blockCount2dhalf, blockSize2dhalf>>>(cond2_global.d_uncond + l*cond2_global.nx*cond2_global.ny, d_amp, std::sqrt((float)(cond2_global.n*cond2_global.m)), cond2_global.nx, cond2_global.ny, cond2_global.n);
 		cudaStatus = cudaThreadSynchronize();	
 		if (cudaStatus != cudaSuccess) printf("cudaThreadSynchronize returned error code %d after launching ReDiv!\n", cudaStatus);
 		
@@ -1712,6 +1719,13 @@ int main()
 
 	int docheck = 0;
 
+
+	char ** info = (char**)malloc(sizeof(char*)*1);
+	info[0] = (char*)malloc(sizeof(char)*255);
+	deviceInfo(info);
+	printf(*info);
+	free(info[0]);
+	free(info);
 		
 	// Test (un)conditional simulation
 	{
