@@ -21,7 +21,7 @@ echo '<?xml version="1.0" encoding="UTF-8"?>';
 	<link href="http://<?php echo $themeroot; ?>styles/estilo1.css" rel="stylesheet" type="text/css" />
   </head>
 
-<body>
+<body style="margin:auto;width:800px;text-align:justify;font-family:sans-serif;">
 
 <!-- R-Forge Logo -->
 <table border="0" width="100%" cellspacing="0" cellpadding="0">
@@ -88,9 +88,9 @@ For compiling from source, you need NVIDIA's CUDA SDK. A detailed  (but short) i
 The current version is 0.01. Downloads for different platforms can be found below. Note that there is no x64 windows binary available at the moment but planned for future releases.
 For compiling from sources on Windows, you need a Microsoft Visual Studio 2010 Compiler and NVIDIA's GPU Computing SDK.
 <br/><br/>
-<a href="XXX">Source - tar.gz</a><br/>
-<a href="XXX">Windows Binaries (x86) - .zip</a><br/>
-<a href="XXX">Windows Binaries (x64) - .zip</a><br/>
+<a href="javascript:alert('Not available at the moment!')">Source - tar.gz</a><br/>
+<a href="javascript:alert('Not available at the moment!')">Windows Binaries (x86) - .zip</a><br/>
+<a href="javascript:alert('Not available at the moment!')">Windows Binaries (x64) - .zip</a><br/>
 
 
 <h3><a name="start">Getting Started</a></h3>
@@ -206,7 +206,7 @@ Marius Appel - marius.appel@uni-muenster.de
 <h3><a name="references">References</a></h3>
 
 <p>
-[1] PAPER
+[1] -
 </p>
 
 
