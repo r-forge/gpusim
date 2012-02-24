@@ -23,20 +23,13 @@ echo '<?xml version="1.0" encoding="UTF-8"?>';
 
 <body style="margin:auto;width:800px;text-align:justify;font-family:sans-serif;">
 
-<!-- R-Forge Logo -->
-<table border="0" width="100%" cellspacing="0" cellpadding="0">
-<tr><td>
-<a href="http://r-forge.r-project.org/"><img src="http://<?php echo $themeroot; ?>/imagesrf/logo.png" border="0" alt="R-Forge Logo" /> </a> </td> </tr>
-</table>
-
 
 <!-- get project title  -->
 <!-- own website starts here, the following may be changed as you like -->
 
-
-
-
-
+<div style="text-align:center">
+<a href="http://r-forge.r-project.org/"><img src="http://<?php echo $themeroot; ?>/imagesrf/logo.png" border="0" alt="R-Forge Logo" /> </a>
+</div>
 
 <a name="Top"></a>
 
@@ -53,7 +46,10 @@ echo '<?xml version="1.0" encoding="UTF-8"?>';
 </div>
 
 
-<div style="text-align:center"><h1>The gpusim R package</h1></div>
+<div style="text-align:center">
+<h1>The gpusim R package</h1>
+
+</div>
 
 
 <h3><a name="introduction">Introduction</a></h3>
@@ -198,7 +194,7 @@ Conditional simulation on a 500x500 grid given 50 random points. The right figur
 
 
 <h3><a name="contact">Contact</a></h3>
-Katharina Henneböhl - katharina.henneboehl@uni-muenster.de<br/>
+Katharina Henneboehl - katharina.henneboehl@uni-muenster.de<br/>
 Marius Appel - marius.appel@uni-muenster.de
 
 
@@ -237,10 +233,6 @@ Marius Appel - marius.appel@uni-muenster.de
 
 
 <!-- end of project description -->
-
-<p> No content added. </p>
-
-<p> The <strong>project summary page</strong> you can find <a href="http://<?php echo $domain; ?>/projects/<?php echo $group_name; ?>/"><strong>here</strong></a>. </p>
 
 </body>
 </html>
