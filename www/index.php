@@ -81,12 +81,11 @@ For compiling from source, you need NVIDIA's CUDA SDK. A detailed  (but short) i
 
 
 <h3><a name="download">Download</a></h3>
-The current version is 0.01. Downloads for different platforms can be found below. Note that there is no x64 windows binary available at the moment but planned for future releases.
-For compiling from sources on Windows, you need a Microsoft Visual Studio 2010 Compiler and NVIDIA's GPU Computing SDK.
+The current version is 0.01. Downloads for different platforms can be found using the link below. Note that there is no x64 windows binary available at the moment but planned for future releases.
+For compiling from sources on Windows, you need a Microsoft Visual Studio 2010 Compiler, NVIDIA's CUDA Toolkit and NVIDIA's GPU Computing SDK.
 <br/><br/>
-<a href="javascript:alert('Not available at the moment!')">Source - tar.gz</a><br/>
-<a href="javascript:alert('Not available at the moment!')">Windows Binaries (x86) - .zip</a><br/>
-<a href="javascript:alert('Not available at the moment!')">Windows Binaries (x64) - .zip</a><br/>
+<a href="http://ifgibox.de/m_appe01/gpusim/download">Download Site</a><br/>
+
 
 
 <h3><a name="start">Getting Started</a></h3>
