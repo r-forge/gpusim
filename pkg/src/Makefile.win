@@ -1,21 +1,36 @@
 OBJ_FILES = sim.obj fft.obj
 DLLOUT = gpusim.dll
-VS_LIB = "C:/Program Files (x86)/Microsoft Visual Studio 10.0/VC/lib"  # CHECK
 
 
-CUDA_SDK_LIB = "$(CUDA_LIB_PATH)"
+VC_HOME = C:/Program Files (x86)/Microsoft Visual Studio 10.0/VC/
+#VC_LIB = $(VC_HOME)"lib"  # CHECK
 
 
-#R_INC = "C:/Program Files (x86)/R/R-2.10.1/include" # CHECK
-#R_LIB = "D:/R2.10-src-R.dll/R-2.10.1/src/gnuwin32" # "G:/R-2.10.1/src/gnuwin32"
+
+ifeq "$(R_ARCH)" "/x64"
+	CUDA_SDK_LIB = "$(CUDA_PATH)/lib/x64"
+else
+	CUDA_SDK_LIB = "$(CUDA_PATH)/lib/Win32"
+endif
+
+
 LIBS = cuda.lib cudart.lib cublas.lib curand.lib cufft.lib
 
-	
-NVCC_FLAGS = -shared -DD10 -DWIN32_D10 --cl-version 2010 --machine 32 --compile -ccbin "c:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\bin" -Xcompiler "/MD"
+
+ifeq "$(R_ARCH)" "/x64"
+	NVCC_FLAGS = -shared -DD10 -DWIN64_D10 --cl-version 2010 --machine 64 --compile -ccbin "$(VC_HOME)/bin/x86_amd64" -Xcompiler "/MD" 
+else
+	NVCC_FLAGS = -shared -DD10 -DWIN32_D10 --cl-version 2010 --machine 32 --compile -ccbin "$(VC_HOME)/bin" -Xcompiler "/MD"
+endif
+
 
 
 gpusim.dll: $(OBJ_FILES)
+ifeq "$(R_ARCH)" "/x64"
+	link /DLL /OUT:$(DLLOUT) $(OBJ_FILES) /LIBPATH:$(CUDA_SDK_LIB) $(LIBS) /MACHINE:X64
+else
 	link /DLL /OUT:$(DLLOUT) $(OBJ_FILES) /LIBPATH:$(CUDA_SDK_LIB) $(LIBS) /MACHINE:X86
+endif
 
 sim.obj: sim.cu
 	nvcc -c sim.cu -o sim.obj -I"$(CUDA_INC_PATH)" $(NVCC_FLAGS)
@@ -25,3 +40,4 @@ fft.obj: fft.cu
 	
 clean:
 	rm $(OBJ_FILES) *.linkinfo gpusim.exp gpusim.lib gpusim.dll
+	

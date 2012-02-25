@@ -13,7 +13,7 @@ Performs (un)conditional simulation of gaussian random fields using NVIDIAs CUDA
 Package: \tab gpusim\cr
 Type: \tab Package\cr
 Version: \tab 0.0.1\cr
-Date: \tab 2011-11-22\cr
+Date: \tab 2012-02-25\cr
 License: \tab GPL-3\cr
 LazyLoad: \tab yes\cr
 }
@@ -32,6 +32,8 @@ Maintainer: Katharina Hennboehl <katharina.henneboehl@uni-muenster.de>
 
 \examples{
 library(gpusim)
+
+gpuDeviceInfo()
 
 # build grid
 xmin = 0
