@@ -7,7 +7,7 @@
 	cat("*********************************\n\n")
  }
  
- gpuSim <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, as.sp = FALSE, fullinvert = FALSE, check = FALSE) {
+ gpuSim <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method = 'O', mu = 0, as.sp = FALSE, check = FALSE, verify = FALSE) {
 	out = 0
  
 	if (missing(grid)) {
@@ -16,6 +16,12 @@
 	
 	if (missing(covmodel) || missing(sill) || missing(range) || missing(nugget)) {
 		stop("Error: Missing one or more arguments for covariance function!")
+	}
+	
+	
+	if (verify == TRUE && as.sp == FALSE) {
+		cat("Notice that verification forces as.sp = TRUE!\n")
+		as.sp = TRUE
 	}
 	
 	if (!missing(uncond) && !missing(samples)) {
@@ -39,6 +45,17 @@
 		if (length(dim(uncond)) != 3) {
 			stop("Error: expected a 3 dimensional array as unconditional realizations")
 		}
+	
+	
+		if (all(c('O','o','S','s') != kriging.method)) {
+			stop("Error: Unknown kriging method")
+		}
+		if (any(c('s','S') == kriging.method) && missing(mu)) {
+			mu = 0
+			warning("No mean for simple kriging given, using 0")
+		}
+		
+		
 		
 		k = dim(uncond)[3]
 		
@@ -59,22 +76,46 @@
 			stop("Error: samples contain more than one data field!")
 		}
 		srcData <- as.vector(samples@data[,1])	
-		cov <- dCov2d(coordinates(samples),covmodel,sill,range,nugget)
+		cov.l <- dCov2d(coordinates(samples),covmodel,sill,range,nugget)
 	
-		un = c(rep(1, numSrc),0)
-		rn = rep(1, numSrc)
-		cov.l = cbind(cov,rn)
-		cov.l = rbind(cov.l,un)
-		cov.l.inv = solve(cov.l)
+		# if ordinary kriging add lagrange condition
+		if (any(c('O','o') == kriging.method)) {
+			cov.l = cbind(cov.l,rep(1, numSrc))
+			cov.l = rbind(cov.l,c(rep(1, numSrc),0))
+		}
 		
+		res = 0
 		retcode = 0
-		result = .C("conditioningInit", as.single(xmin), as.single(xmax), as.integer(nx), as.single(ymin),as.single(ymax), as.integer(ny), as.single(sill), as.single(range), as.single(nugget), as.single(srcXY), as.single(srcData), as.integer(numSrc), as.single(cov.l.inv), as.integer(k), as.single(uncond), as.integer(covID(covmodel)), retcode = as.integer(retcode),PACKAGE="gpusim")
+		result = .C("conditioningInit", as.single(xmin), as.single(xmax), as.integer(nx), as.single(ymin),as.single(ymax), as.integer(ny), as.single(sill), as.single(range), as.single(nugget), as.single(srcXY), as.single(srcData), as.integer(numSrc),  as.integer(k), as.single(uncond), as.integer(covID(covmodel)), as.integer(gpuSimKrigeMethod(kriging.method)), as.single(mu), retcode = as.integer(retcode),PACKAGE="gpusim")
 		if (result$retcode != 0) stop(paste("Initialization of conditioning returned error:",gpuSimCatchError(result$retcode)))
-		res = .C("conditioningRealizations", out=single(nx*ny*k), retcode = as.integer(retcode), PACKAGE="gpusim")
-		if (res$retcode != 0) stop(paste("Generation of realizations returned error:", gpuSimCatchError(result$retcode)))
+		
+		# if ordinary kriging add lagrange condition
+		if (any(c('O','o') == kriging.method)) {	
+			# generate all unconditional realizations and get their residuals to the data
+			res = .C("conditioningResiduals", out=single((numSrc + 1) * k),retcode = as.integer(retcode), PACKAGE="gpusim")
+			if (res$retcode != 0) stop(paste("Computation of residuals between generated unconditional realizations and given data returned error: ",gpuSimCatchError(res$retcode)))		
+			# solve residual equation system
+			dim(res$out) = c(numSrc+1,k)
+			y = solve(cov.l, res$out)				
+			# interpolate residuals and add to the unconditional realizations		
+			res = .C("conditioningKrigeResiduals", out=single(nx*ny*k), as.single(y), retcode = as.integer(retcode), PACKAGE="gpusim")
+			if (res$retcode != 0) stop(paste("Generation of realizations for conditional simulation returned error: ",gpuSimCatchError(res$retcode)))
+		}
+		else if (any(c('S','s') == kriging.method)) {	
+			# generate all unconditional realizations and get their residuals to the data
+			res = .C("conditioningResiduals", out=single(numSrc * k),retcode = as.integer(retcode), PACKAGE="gpusim")
+			if (res$retcode != 0) stop(paste("Computation of residuals between generated unconditional realizations and given data returned error: ",gpuSimCatchError(res$retcode)))		
+			# solve residual equation system
+			dim(res$out) = c(numSrc,k)
+			y = solve(cov.l, res$out)				
+			# interpolate residuals and add to the unconditional realizations		
+			res = .C("conditioningSimpleKrigeResiduals", out=single(nx*ny*k), as.single(y), retcode = as.integer(retcode), PACKAGE="gpusim")
+			if (res$retcode != 0) stop(paste("Generation of realizations for conditional simulation returned error: ", gpuSimCatchError(res$retcode)))
+		}		
+		
 		result = .C("conditioningRelease", retcode = as.integer(retcode),PACKAGE="gpusim")
 		if (result$retcode != 0) stop(paste("Releasing memory for simulation returned error:" , gpuSimCatchError(result$retcode)))
-		
+			
 		if (as.sp == FALSE) {
 			out = as.vector(res$out)
 			dim(out) = c(nx,ny,k)
@@ -83,8 +124,7 @@
 			out = SpatialPixelsDataFrame(coordinates(grid),as.data.frame(matrix(res$out,ncol = k,nrow = nx*ny)))	
 			names(out@data) = paste("sim",1:k,sep="")
 		}
-		
-		
+			
 	}
 	else if (!missing(k) && !missing(samples)) {
 		#conditional simulation
@@ -100,6 +140,15 @@
 		if (class(samples) != "SpatialPointsDataFrame") {
 			stop("Error: samples must be of type SpatialPointsDataFrame")
 		}
+		
+		if (all(c('O','o','S','s') != kriging.method)) {
+			stop("Error: Unknown kriging method")
+		}
+		if (any(c('s','S') == kriging.method) && missing(mu)) {
+			mu = 0
+			warning("No mean for simple kriging given, using 0")
+		}
+		
 			
 		xmin = grid@cellcentre.offset[1]
 		ymin = grid@cellcentre.offset[2]
@@ -119,49 +168,48 @@
 		srcData <- as.vector(samples@data[,1])
 		
 		# Get covariance matrix from sample points
-		cov <- dCov2d(coordinates(samples),covmodel,sill,range,nugget)
+		cov.l <- dCov2d(coordinates(samples),covmodel,sill,range,nugget)
 		
-		un = c(rep(1, numSrc),0)
-		rn = rep(1, numSrc)
-		cov.l = cbind(cov,rn)
-		cov.l = rbind(cov.l,un)
-		
-		res <- 0
-		
-		if (fullinvert) {
-			cov.l.inv = solve(cov.l)
-					
-			retcode = 0
-			result = .C("conditionalSimInit", as.single(xmin), as.single(xmax), as.integer(nx), as.single(ymin),as.single(ymax), as.integer(ny), as.single(sill), as.single(range), as.single(nugget), as.single(srcXY), as.single(srcData), as.integer(numSrc), as.single(cov.l.inv), as.integer(covID(covmodel)), as.integer(check), retcode = as.integer(retcode), PACKAGE="gpusim")
-			if (result$retcode != 0) stop(paste("Initialization of conditional simulation returned error: ",gpuSimCatchError(result$retcode)))
-			res = .C("conditionalSimRealizations", out=single(nx*ny*k), as.integer(k),retcode = as.integer(result$retcode), PACKAGE="gpusim")
-			if (result$retcode != 0) stop(paste("Generation of realizations for conditional simulation returned error: ", gpuSimCatchError(result$retcode)))
-			result = .C("conditionalSimRelease",retcode = as.integer(retcode),PACKAGE="gpusim")	
-			if (result$retcode != 0) stop(paste("Releasing memory for simulation returned error: ",gpuSimCatchError(result$retcode)))
+		# if ordinary kriging add lagrange condition
+		if (any(c('O','o') == kriging.method)) {
+			cov.l = cbind(cov.l,rep(1, numSrc))
+			cov.l = rbind(cov.l,c(rep(1, numSrc),0))
 		}
 		
-		else {			
-			retcode = 0
-			result = .C("conditionalSim2Init", as.single(xmin), as.single(xmax), as.integer(nx), as.single(ymin),as.single(ymax), as.integer(ny), as.single(sill), as.single(range), as.single(nugget), as.single(srcXY), as.single(srcData), as.integer(numSrc), as.integer(covID(covmodel)), as.integer(check), retcode = as.integer(retcode), PACKAGE="gpusim")
-			if (result$retcode != 0) stop(paste("Initialization of conditional simulation returned error: ",gpuSimCatchError(result$retcode)))
-			
+		res <- 0		
+		retcode = 0
+		result = .C("conditionalSimInit", as.single(xmin), as.single(xmax), as.integer(nx), as.single(ymin),as.single(ymax), as.integer(ny), as.single(sill), as.single(range), as.single(nugget), as.single(srcXY), as.single(srcData), as.integer(numSrc), as.integer(covID(covmodel)), as.integer(check), as.integer(gpuSimKrigeMethod(kriging.method)), as.single(mu), retcode = as.integer(retcode), PACKAGE="gpusim")
+		if (result$retcode != 0) stop(paste("Initialization of conditional simulation returned error: ",gpuSimCatchError(result$retcode)))
+		
+		
+		# if ordinary kriging add lagrange condition
+		if (any(c('O','o') == kriging.method)) {	
 			# generate all unconditional realizations and get their residuals to the data
-			res = .C("conditionalSim2UncondResiduals", out=single((numSrc + 1) * k), as.integer(k),retcode = as.integer(retcode), PACKAGE="gpusim")
-			if (result$retcode != 0) stop(paste("Computation of residuals between generated unconditional realizations and given data returned error: ",gpuSimCatchError(result$retcode)))
-			
+			res = .C("conditionalSimUncondResiduals", out=single((numSrc + 1) * k), as.integer(k),retcode = as.integer(retcode), PACKAGE="gpusim")
+			if (res$retcode != 0) stop(paste("Computation of residuals between generated unconditional realizations and given data returned error: ",gpuSimCatchError(res$retcode)))		
 			# solve residual equation system
 			dim(res$out) = c(numSrc+1,k)
-			y = solve(cov.l, res$out)		
-			
-			# interpolate residuals and add it to the unconditional realizations
-			res = .C("conditionalSim2KrigeResiduals", out=single(nx*ny*k), as.single(y),retcode = as.integer(retcode), PACKAGE="gpusim")
-			if (result$retcode != 0) stop(paste("Generation of realizations for conditional simulation returned error: ",gpuSimCatchError(result$retcode)))
-			
-			# clean up
-			result = .C("conditionalSim2Release",retcode = as.integer(retcode),PACKAGE="gpusim")	
-			if (result$retcode != 0) stop(paste("Releasing memory for conditional simulation returned error: ",gpuSimCatchError(result$retcode)))
-			
+			y = solve(cov.l, res$out)				
+			# interpolate residuals and add to the unconditional realizations		
+			res = .C("conditionalSimKrigeResiduals", out=single(nx*ny*k), as.single(y), retcode = as.integer(retcode), PACKAGE="gpusim")
+			if (res$retcode != 0) stop(paste("Generation of realizations for conditional simulation returned error: ",gpuSimCatchError(res$retcode)))
 		}
+		else if (any(c('S','s') == kriging.method)) {	
+			# generate all unconditional realizations and get their residuals to the data
+			res = .C("conditionalSimUncondResiduals", out=single(numSrc * k), as.integer(k),retcode = as.integer(retcode), PACKAGE="gpusim")
+			if (res$retcode != 0) stop(paste("Computation of residuals between generated unconditional realizations and given data returned error: ",gpuSimCatchError(res$retcode)))		
+			# solve residual equation system
+			dim(res$out) = c(numSrc,k)
+			y = solve(cov.l, res$out)				
+			# interpolate residuals and add to the unconditional realizations		
+			res = .C("conditionalSimSimpleKrigeResiduals", out=single(nx*ny*k), as.single(y), retcode = as.integer(retcode), PACKAGE="gpusim")
+			if (res$retcode != 0) stop(paste("Generation of realizations for conditional simulation returned error: ", gpuSimCatchError(res$retcode)))
+		}		
+		
+		# clean up
+		result = .C("conditionalSimRelease",retcode = as.integer(retcode),PACKAGE="gpusim")	
+		if (result$retcode != 0) stop(paste("Releasing memory for conditional simulation returned error: ",gpuSimCatchError(result$retcode)))
+			
 
 		if (as.sp == FALSE) {
 			out = as.vector(res$out)
@@ -212,7 +260,21 @@
 	}
 	else {
 		stop("Error: Missing one or more required arguments!")
-	}	
+	}
+
+	if (verify) {
+		gamma = 0
+		v0 = variogram(out[[1]]~1,out,cloud=FALSE)
+		for (i in 2:ncol(out)) {
+			v = variogram(out[[i]]~1,out,cloud=FALSE)
+			v0$gamma = v0$gamma + v$gamma
+		}
+		v0$gamma = v0$gamma / ncol(out)
+		print(plot(v0,vgm(sill, model, range, nugget)))	
+		cat("Verification returned the following experimental variogram: \n")
+		print(v0)
+	}
+
 	return(out)	
 }
 
@@ -222,7 +284,7 @@
 
 
 
-gpuSimEval <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, as.sp = FALSE, fullinvert=FALSE, check = FALSE) {
+gpuSimEval <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, as.sp = FALSE, fullinvert=FALSE, check = FALSE, verify = FALSE) {
 
 	out = 0
 	
@@ -236,6 +298,11 @@ gpuSimEval <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, 
 	
 	if (missing(covmodel) || missing(sill) || missing(range) || missing(nugget)) {
 		stop("Error: Missing one or more arguments for covariance function!")
+	}
+	
+	if (verify == TRUE && as.sp == FALSE) {
+		cat("Notice that verification forces as.sp = TRUE!\n")
+		as.sp = TRUE
 	}
 	
 	if (!missing(uncond) && !missing(samples)) {
@@ -438,6 +505,24 @@ gpuSimEval <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, 
 	else {
 		stop("Error: One or more required arguments missing!")
 	}	
+	
+	
+	
+	if (verify) {
+		gamma = 0
+		v0 = variogram(out[[1]]~1,out,cloud=FALSE)
+		for (i in 2:ncol(out)) {
+			v = variogram(out[[i]]~1,out,cloud=FALSE)
+			v0$gamma = v0$gamma + v$gamma
+		}
+		v0$gamma = v0$gamma / ncol(out)
+		print(plot(v0,vgm(sill, model, range, nugget)))	
+		cat("Verification returned the following experimental variogram: \n")
+		print(v0)
+	}
+	
+	
+	
 	
 	time.total = proc.time()[3] - time.total
 	time.remaining = time.total - time.gpupre - time.gpureal

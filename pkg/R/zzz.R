@@ -1,11 +1,19 @@
 .packageName <- "gpusim" 
 
 
- # Error codes must be in accordance to c code
+# Error codes must be in accordance to c code
  gpuSimCatchError <- function(code) {
 	messages = c("successful", "fft of covariance matrix contains negative real parts", "unknown error returned", "no device found")
 	return (messages[code+1])
  }
+ 
+ # Kriging method codes must be in accordance to c code
+ gpuSimKrigeMethod <- function(identifier) {
+	if (any(c('S','s') == identifier)) return(0) # simple
+	if (any(c('O','o') == identifier)) return(1)# ordinary
+	return (-1);
+ }
+
 
 
 .onLoad  <-  function(libname, pkgname)  {

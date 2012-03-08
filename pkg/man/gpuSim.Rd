@@ -7,7 +7,7 @@ Performs (un)conditional simulation of gaussian random fields using NVIDIAs CUDA
 }
 
 \usage{
-gpuSim(grid, covmodel, sill, range, nugget, k, samples, uncond, as.sp = FALSE, fullinvert = FALSE, check = FALSE)
+gpuSim <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method = 'O', mu = 0, as.sp = FALSE, check = FALSE, verify = FALSE)
 }
 
 \arguments{
@@ -24,10 +24,11 @@ gpuSim(grid, covmodel, sill, range, nugget, k, samples, uncond, as.sp = FALSE, f
 	\item{k}{Number of realizations}
 	\item{samples}{Sample points as a SpatialPointsDataFrame object containing exactly one data field which is used for conditioning. If this argument is missing, only unconditional simulation will be performed.}
 	\item{uncond}{Realizations of an unconditional simulation. Used together with \emph{samples} to condition previously computed realizations of an unconditional simulation using real sample data. The realizations can be given either as a three-dimensional array with the realization as third index or as a SpatialPixelsDataFrame object containing realizations as data fields. Note that you have to give the same covariance function which was used for generating the unconditional simulation in order to get meaningful results.}	
+	\item{kriging.method}{String identifier of the kriging method used for conditioning. Currently 's' or 'S' for simple kriging and 'o' or 'O' for ordinary kriging. Notice that for simple kriging, a known mean value can be given in mu.}
+	\item{mu}{Mean value for conditioning the field using simple kriging. If ordinary kriging is used, this argument is unused.}
 	\item{as.sp}{TRUE or FALSE, should result be returned as SpatialPixelsDataFrame or as an simple array?}
-	\item{fullinvert}{TRUE or FALSE, should the sample covariance be inverted completely? Only relevant for conditional simulation, FALSE gives a better performance.}
 	\item{check}{TRUE or FALSE, should fft of covariance matrix be checked for negative real parts?}
-
+	\item{verify}{If TRUE, an average experimental variogram of the simulation results is generated and plotted together with the theoretical variogram model. Depending on the simulation dimensions, this may take some time. Using verification forces as.sp = TRUE.}
 }
 
 \details{
@@ -52,6 +53,7 @@ gpuSim currently does NOT check the fft covariance grid to be positive definite!
 
 \examples{
 library(gpusim)
+library(fields) # for image.plot
 
 # build grid
 xmin = 0
@@ -92,17 +94,21 @@ samples = data.frame(x=sample_x, y=sample_y)
 coordinates(samples)=c("x","y")
 samples = SpatialPointsDataFrame(samples,as.data.frame(sample_z))
 
-# conditional simulation without sp interoperability
+# conditional simulation without sp interoperability using ordinary kriging
 simGPUcond = gpuSim(grid, model, sill, range, nugget, k, samples)
 image.plot(simGPUcond[,,1]) ## plot 5-th realization
 
-# conditional simulation with sp interoperability
+# conditional simulation with sp interoperability using ordinary kriging
 simGPUcondsp = gpuSim(grid, model, sill, range, nugget, k, samples, as.sp = TRUE)
 spplot(simGPUcondsp) # plot all realizations using sp
 
 
+# conditional simulation using simple kriging assuming a WRONG mean value 5 (20 would be correct)
+simGPUcond = gpuSim(grid, model, sill, range, nugget, k, samples, kriging.method='s',mu=5)
+image.plot(simGPUcond[,,5]) ## plot 5-th realization
 
-# conditioning using unconditional realizations computed before
+
+# conditioning by ordinary kriging using unconditional realizations computed before
 simGPUcond1 = gpuSim(grid,model,sill,range,nugget,samples=samples,uncond=simGPU)
 image.plot(simGPUcond1[,,5])
 

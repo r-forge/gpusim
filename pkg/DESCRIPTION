@@ -4,7 +4,8 @@ Date:  2012-02-25
 Title:  gpusim
 Author:  Katharina Henneboehl, Marius Appel  <marius.appel@uni-muenster.de>
 Maintainer:  Katharina Henneboehl, Marius Appel  <marius.appel@uni-muenster.de>
-Depends:  R  (>=  2.1.4), sp
+Depends:  R  (>=  2.1.4), gstat
+Suggests: fields
 Description: GPU Simulation of Random Fields using CUDA
 License:  GPL  (>=  2)
 URL:  http://gpusim.r-forge.r-project.org/

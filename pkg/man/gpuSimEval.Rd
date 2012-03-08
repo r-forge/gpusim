@@ -7,7 +7,7 @@ Performs exactly the same computations as gpuSim() but does not return any reali
 }
 
 \usage{
-gpuSimEval(grid, covmodel, sill, range, nugget, k, samples, uncond, as.sp = FALSE, fullinvert = FALSE, check = FALSE)
+gpuSimEval(grid, covmodel, sill, range, nugget, k, samples, uncond, as.sp = FALSE, fullinvert = FALSE, check = FALSE, verify = FALSE)
 }
 
 \arguments{
@@ -27,6 +27,7 @@ gpuSimEval(grid, covmodel, sill, range, nugget, k, samples, uncond, as.sp = FALS
 	\item{as.sp}{TRUE or FALSE, should result be returned as SpatialPixelsDataFrame or as an simple array?}
 	\item{fullinvert}{TRUE or FALSE, should the sample covariance be inverted completely? Only relevant for conditional simulation, FALSE gives a better performance.}
 	\item{check}{TRUE or FALSE, should fft of covariance matrix be checked for negative real parts?}
+	\item{verify}{If TRUE, an average experimental variogram of the simulation results is generated and plotted together with the theoretical variogram model. Depending on the simulation dimensions, this may take some time. Using verification forces as.sp = TRUE.}
 }
 
 \details{
@@ -51,9 +52,6 @@ The result is a vector with exactly four elements:
 
 \author{Marius Appel \email{marius.appel@uni-muenster.de}}
 
-\note{
-gpuSim currently does NOT check the fft covariance grid to be positive definite! Thus, you should make sure to select an appropriate covariance model.
-}
 
 \examples{
 library(gpusim)

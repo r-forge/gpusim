@@ -32,6 +32,7 @@ Maintainer: Katharina Hennboehl <katharina.henneboehl@uni-muenster.de>
 
 \examples{
 library(gpusim)
+library(fields) # for image.plot
 
 gpuDeviceInfo()
 
