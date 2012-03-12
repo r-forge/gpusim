@@ -3,11 +3,11 @@
 \title{Evaluation of computation times needed for gpuSim()}
 
 \description{
-Performs exactly the same computations as gpuSim() but does not return any realiaztion but a detailed list of needed computation times for different tasks.
+Performs exactly the same computations as gpuSim() but additionally returns needed computation times for different simulation steps.
 }
 
 \usage{
-gpuSimEval(grid, covmodel, sill, range, nugget, k, samples, uncond, as.sp = FALSE, fullinvert = FALSE, check = FALSE, verify = FALSE)
+gpuSimEval <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method = 'O', mu = 0, as.sp = FALSE, check = FALSE, verify = FALSE)
 }
 
 \arguments{
@@ -24,8 +24,9 @@ gpuSimEval(grid, covmodel, sill, range, nugget, k, samples, uncond, as.sp = FALS
 	\item{k}{Number of realizations}
 	\item{samples}{Sample points as a SpatialPointsDataFrame object containing exactly one data field which is used for conditioning. If this argument is missing, only unconditional simulation will be performed.}
 	\item{uncond}{Realizations of an unconditional simulation. Used together with \emph{samples} to condition previously computed realizations of an unconditional simulation using real sample data. The realizations can be given either as a three-dimensional array with the realization as third index or as a SpatialPixelsDataFrame object containing realizations as data fields. Note that you have to give the same covariance function which was used for generating the unconditional simulation in order to get meaningful results.}	
+	\item{kriging.method}{String identifier of the kriging method used for conditioning. Currently 's' or 'S' for simple kriging and 'o' or 'O' for ordinary kriging. Notice that for simple kriging, a known mean value can be given in mu.}
+	\item{mu}{Mean value for conditioning the field using simple kriging. If ordinary kriging is used, this argument is unused.}
 	\item{as.sp}{TRUE or FALSE, should result be returned as SpatialPixelsDataFrame or as an simple array?}
-	\item{fullinvert}{TRUE or FALSE, should the sample covariance be inverted completely? Only relevant for conditional simulation, FALSE gives a better performance.}
 	\item{check}{TRUE or FALSE, should fft of covariance matrix be checked for negative real parts?}
 	\item{verify}{If TRUE, an average experimental variogram of the simulation results is generated and plotted together with the theoretical variogram model. Depending on the simulation dimensions, this may take some time. Using verification forces as.sp = TRUE.}
 }
@@ -40,13 +41,11 @@ This is a wrapper function for different types of simulation routines such as un
 }
 
 \value{
-The result is a vector with exactly four elements:
+The result is a list containing exactly two elements:
 	\enumerate{
-         \item \emph{time.total} gives the total time needed for the simulation.
-		 \item \emph{time.gpupreprocessing} is the time that is needed for doing preprocessing steps on the GPU which are only needed oncer for all realizations.
-		 \item \emph{time.gpurealizations} is the time that is needed for generating all realizations.
-		 \item \emph{time.remaining} returns the remaining time for doing sime pre- or postprocessing steps in R. For instance, this includes the creation of a sp object if as.sp = TRUE and computing the inverse covariance matrix of sample points in conditioning. 
-    }
+         \item \emph{result} gives the result or the simulation as in \emph{gpusim}.
+		 \item \emph{runtimes} are the needed computation times for different steps of the simulation given as a named numeric vector.
+	}
 	Note that all times are given in seconds.
 }
 
@@ -77,10 +76,14 @@ k = 5  ## number of realizations
 
 
 # unconditional simulation
-gpuSimEval(grid, model, sill, range, nugget, k)
+out = gpuSimEval(grid, model, sill, range, nugget, k)
+image(out$result[,,1]) # plot first realization
+print(out$runtimes)    # print computation times
 
 # unconditional simulation with sp interoperability, probably slower
-gpuSimEval(grid, model, sill, range, nugget, k, as.sp = TRUE)
+out = gpuSimEval(grid, model, sill, range, nugget, k, as.sp = TRUE)
+image(out$result["sim1"]) # plot first realization
+print(out$runtimes)    # print computation times
 }
 
 \keyword{cuda}
