@@ -51,30 +51,30 @@ See \code{?sim.Krig.grid} in package \code{fields}.
 }
 
 \examples{
-####################################################
-## Performance Comparison ##########################
 
 library(fields)
+library(gstat)
 
-n = 1000
+# meuse data
+data(meuse)
+coordinates(meuse) = ~x+y
 
-# fields
-grid<- list( x= seq( 0,5,,n), y= seq(0,5,,n)) 
-system.time(obj <- Exp.image.cov( grid=grid, theta=.5, setup=TRUE))
-system.time(res <- sim.rf(obj))
-image.plot(res)
+out = Krig(coordinates(meuse), log(meuse$zinc), Covariance="Exponential", theta=500, rho=0.6, sigma2=0.05, m=1)
 
+# simulation grid
+xmin=178000
+xmax=182000
+ymin=329000
+ymax=334000
 
-# gpu fields
-grid<- list( x= seq( 0,5,,n), y= seq(0,5,,n)) 
-system.time(obj <- gpu.Exp.image.cov( grid=grid, theta=.5, setup=TRUE))
-system.time(res <- gpu.sim.rf(obj))
-image.plot(res)
+x=seq(xmin+10, xmax, by=5)
+y=seq(ymin+10, ymax, by=5)
+length(x)
+length(y)
 
+grid=expand.grid(x,y)
 
-# gpusim
-grid = GridTopology(c(0,0), c(5/n,5/n), c(n,n))
-system.time(simGPU <- gpuSim(grid, "Exp", 1, 0.5, 0, 1))
-image.plot(simGPU[,,1])
+sim.out = gpu.sim.Krig.grid(out, grid.list =list(x,y), M=1, extrap=TRUE)
+image(matrix(sim.out$z, nrow=length(sim.out$y), ncol=length(sim.out$x), byrow=TRUE))
 }
 
