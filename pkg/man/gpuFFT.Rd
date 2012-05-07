@@ -7,12 +7,13 @@ Runs a FFT using NVIDIA's cufft library. Looks, if a plan has already been creat
 }
 
 \usage{
-	gpuFFT(x, inv = FALSE) 
+	gpuFFT(x, inv = FALSE,, prec.double = FALSE) 
 }
 
 \arguments{
 	\item{x}{up to 3 dimensional numeric data}
 	\item{inv}{TRUE or FALSE, should the inverse FFT be executed}
+	\item{prec.double}{If TRUE, double precision is used instead of single precision}
 }
 
 \value{Complex array of spectral coefficients}

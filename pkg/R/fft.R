@@ -1,11 +1,11 @@
 
-gpuFFTplan <- function(nx, ny=1, nz=1) {
-	res = .C("planFFT", as.integer(nx), as.integer(ny), as.integer(nz), DUP=FALSE, PACKAGE="gpusim")
+gpuFFTplan <- function(nx, ny=1, nz=1, prec.double=FALSE) {
+	res = .C("planFFT", as.integer(nx), as.integer(ny), as.integer(nz), as.integer(prec.double), DUP=FALSE, PACKAGE="gpusim")
 }
 
 
 
-gpuFFT <- function(x, inv=FALSE) {
+gpuFFT <- function(x, inv=FALSE, prec.double=FALSE) {
 	d = 0
 	if (class(x) == "array" || class(x) == "matrix") {
 		d = dim(x)
@@ -21,7 +21,7 @@ gpuFFT <- function(x, inv=FALSE) {
 	if (length(d) > 2) nz = d[3]
 	iscomplex = is.complex(x)
 	
-	res = .C("execFFT", out = complex(n),x , as.integer(nx), as.integer(ny), as.integer(nz), as.integer(inv),as.integer(iscomplex), DUP=FALSE, PACKAGE="gpusim")
+	res = .C("execFFT", out = complex(n), x , as.integer(nx), as.integer(ny), as.integer(nz), as.integer(inv),as.integer(iscomplex), as.integer(prec.double), DUP=FALSE, PACKAGE="gpusim")
 	dim(res$out) = d
 	return(res$out)
 }

@@ -14,6 +14,7 @@ Creates a cufft plan and stores it in an internal plan buffer.
 	\item{nx}{size in first dimension}
 	\item{ny}{size in second dimension}
 	\item{nz}{size in third dimension}
+	\item{prec.double}{If TRUE, double precision is used instead of single precision}
 }
 
 

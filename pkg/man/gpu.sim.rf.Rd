@@ -3,8 +3,8 @@
 % University Corporation for Atmospheric Research
 % Licensed under the GPL -- www.gpl.org/licenses/gpl.html
 
-\name{sim.rf}
-\alias{sim.rf}
+\name{gpu.sim.rf}
+\alias{gpu.sim.rf}
 \title{
   Simulates a random field using the \code{fields} package but a GPU accelerated fft. 
 }
@@ -12,7 +12,7 @@
 See \code{?sim.rf} in package \code{fields}.
 }
 \usage{
-sim.rf(obj)
+gpu.sim.rf(obj)
 }
 \arguments{
 \item{obj}{
@@ -29,6 +29,8 @@ See \code{?sim.rf} in package \code{fields}.
 \examples{
 ####################################################
 ## Performance Comparison ##########################
+
+library(fields)
 
 n = 1000
 

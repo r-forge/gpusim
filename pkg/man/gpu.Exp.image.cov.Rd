@@ -47,6 +47,8 @@ See \code{?Exp.image.cov} in package \code{fields}.
 ####################################################
 ## Performance Comparison ##########################
 
+library(fields)
+
 n = 1000
 
 # fields
