@@ -81,7 +81,7 @@ For compiling from source, you need NVIDIA's CUDA SDK. A detailed  (but short) i
 
 
 <h3><a name="download">Download</a></h3>
-The current version is 0.01. Downloads for different platforms can be found using the link below. Note that there is no x64 windows binary available at the moment but planned for future releases.
+The current version is 0.01. Downloads for different platforms can be found using the link below.
 For compiling from sources on Windows, you need a Microsoft Visual Studio 2010 Compiler, NVIDIA's CUDA Toolkit and NVIDIA's GPU Computing SDK.
 <br/><br/>
 <a href="http://ifgibox.de/m_appe01/gpusim/download">Download Site</a><br/>
@@ -90,7 +90,7 @@ For compiling from sources on Windows, you need a Microsoft Visual Studio 2010 C
 
 <h3><a name="start">Getting Started</a></h3>
 
-As a starting point for working with gpusim, watch the following R script which generates 5 realizations of an unconditional simulation using an exponential covariance function.
+As a starting point for working with gpusim, have a look at the following R script, which generates 5 realizations of an unconditional simulation using an exponential covariance function.
 Before you run the following script, make sure you have successfully installed <b>gpusim</b> by executing <span style="font-family:Monospace;">R CMD INSTALL gpusim</span> in your Linux terminal or installing the package binaries using the Rgui in Windows.
 <div style="font-family:Monospace;background-color:#EEEEEE;margin-top:5px;margin-bottom:5px;border:1px solid black;">
 library(gpusim) # <-- load R package<br/>
