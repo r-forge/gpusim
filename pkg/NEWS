@@ -1,2 +1,4 @@
+2012-05-30: - Matern3 and Matern5 covariance functions added
+2012-05-30: - Double precision for FFT and Simulation
 2011-12-04: - Performance of conditional simulation improved, the sample covariance matrix is not any longer inverted by solve(), solve() is only used for solving the equation system of the sample covariance matrix and the data residuals to the unconditional realizations.
 2011-11-22: - First draft commited to Rforge svn

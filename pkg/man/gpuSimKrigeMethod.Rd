@@ -1,5 +1,5 @@
-\name{gpuSimKrigeMethod}
-\alias{gpuSimKrigeMethod}
+\name{.gpuSimKrigeMethod}
+\alias{.gpuSimKrigeMethod}
 \title{Internal handling of kriging methods for conditioning}
 
 \description{
@@ -7,7 +7,7 @@ Returns an internal integer representation of the given kriging method.
 }
 
 \usage{
-	gpuSimKrigeMethod(identifier) 
+	.gpuSimKrigeMethod(identifier) 
 }
 
 \arguments{
@@ -20,7 +20,7 @@ Returns an internal integer representation of the given kriging method.
 \author{Marius Appel \email{marius.appel@uni-muenster.de}}
 
 \examples{
-gpuSimKrigeMethod('s') # <- 0
+.gpuSimKrigeMethod('s') # <- 0
 }
 
 \keyword{cuda}

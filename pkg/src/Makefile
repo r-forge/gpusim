@@ -1,4 +1,4 @@
-OBJ_FILES = sim.o fft.o
+OBJ_FILES = sim_2f.o sim_2d.o utils.o fft.o
 DLLOUT = gpusim.so
 
 CUDA_HOME = /usr/local/cuda
@@ -15,10 +15,16 @@ NVCC_FLAGS = -gencode arch=compute_10,code=sm_10 -gencode arch=compute_11,code=s
 all: $(OBJ_FILES)
 	$(NVCC) -shared -L$(CUDA_LIB_PATH) $(LIBS) $(OBJ_FILES) -o $(DLLOUT) 
 
-sim.o: sim.cu
-	$(NVCC) -c sim.cu -o sim.o -I$(CUDA_INC_PATH) $(NVCC_FLAGS)
+sim_2f.o: sim_2f.cu
+	$(NVCC) -c sim_2f.cu -o sim_2f.o -I$(CUDA_INC_PATH) $(NVCC_FLAGS)
 	
-sim.o: fft.cu
+sim_2d.o: sim_2d.cu
+	$(NVCC) -c sim_2d.cu -o sim_2d.o -I$(CUDA_INC_PATH) $(NVCC_FLAGS)
+	
+utils.o: utils.cpp
+	$(NVCC) -c utils.cpp -o utils.o -I$(CUDA_INC_PATH) $(NVCC_FLAGS)
+	
+fft.o: fft.cu
 	$(NVCC) -c fft.cu -o fft.o -I$(CUDA_INC_PATH) $(NVCC_FLAGS)
 
 clean:

@@ -1,4 +1,4 @@
-OBJ_FILES = sim.obj fft.obj
+OBJ_FILES = sim_2f.obj sim_2d.obj fft.obj utils.obj
 DLLOUT = gpusim.dll
 
 
@@ -32,8 +32,14 @@ else
 	link /DLL /OUT:$(DLLOUT) $(OBJ_FILES) /LIBPATH:$(CUDA_SDK_LIB) $(LIBS) /MACHINE:X86
 endif
 
-sim.obj: sim.cu
-	nvcc -c sim.cu -o sim.obj -I"$(CUDA_INC_PATH)" $(NVCC_FLAGS)
+sim_2f.obj: sim_2f.cu
+	nvcc -c sim_2f.cu -o sim_2f.obj -I"$(CUDA_INC_PATH)" $(NVCC_FLAGS)
+	
+sim_2d.obj: sim_2d.cu
+	nvcc -c sim_2d.cu -o sim_2d.obj -I"$(CUDA_INC_PATH)" $(NVCC_FLAGS)
+	
+utils.obj: utils.cpp
+	nvcc -c utils.cpp -o utils.obj -I"$(CUDA_INC_PATH)" $(NVCC_FLAGS)
 	
 fft.obj: fft.cu
 	nvcc -c fft.cu -o fft.obj -I"$(CUDA_INC_PATH)" $(NVCC_FLAGS)

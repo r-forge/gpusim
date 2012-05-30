@@ -7,17 +7,19 @@ Performs (un)conditional simulation of gaussian random fields using NVIDIAs CUDA
 }
 
 \usage{
-gpuSim <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method = 'O', mu = 0, as.sp = FALSE, check = FALSE, verify = FALSE)
+gpuSim <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method = 'O', mu = 0, as.sp = FALSE, check = FALSE, verify = FALSE, prec.double=FALSE)
 }
 
 \arguments{
 	\item{grid}{Either a GridTopology or a SpatialPixelsDataFrame object containing the underlying grid}
 	\item{covmodel}{A character sequence identifying the covariance function. Note that the functions do not include anisotropy information and are described by three arguments \emph{sill}, \emph{range} and \emph{nugget}. Currently, the following functions are implemented: 
 	\itemize{
-         \item \emph{Exp} - exponential covariance function \eqn{C(h) = sill \cdot exp(\frac{-h}{range})}{C(h) = sill * exp(-h/range)} where \eqn{C(0) = nugget + sill}
-         \item \emph{Gau} - gaussian covariance function \eqn{C(h) = sill \cdot exp(-(\frac{h}{range})^{2})}{C(h) = sill * exp(-(h/range)^2)} where \eqn{C(0) = nugget + sill} 
-		 \item \emph{Sph} - spherical covariance function  \eqn{C(h) = sill \cdot (1 - (\frac{3h}{2 \cdot range} - \frac{h^3}{2 \cdot range^3}))}{C(h) = sill * (1 - ((3h/2*range) - (h^3 / 2*range^3))} for 0 < h <= range, \eqn{C(0) = nugget + sill} and \eqn{C(h) = 0} for h > range.
-       }}
+         \item \emph{Exp} - exponential covariance function: \eqn{C(h) = sill \cdot exp(\frac{-h}{range})}{C(h) = sill * exp(-h/range)} where \eqn{C(0) = nugget + sill}
+         \item \emph{Gau} - gaussian covariance function: \eqn{C(h) = sill \cdot exp(-(\frac{h}{range})^{2})}{C(h) = sill * exp(-(h/range)^2)} where \eqn{C(0) = nugget + sill} 
+		 \item \emph{Sph} - spherical covariance function:  \eqn{C(h) = sill \cdot (1 - (\frac{3h}{2 \cdot range} - \frac{h^3}{2 \cdot range^3}))}{C(h) = sill * (1 - ((3h/2*range) - (h^3 / 2*range^3))} for 0 < h <= range, \eqn{C(0) = nugget + sill} and \eqn{C(h) = 0} for h > range.
+		 \item \emph{Mat3} - matern covariance function with v=3/2: \eqn{C(h) = sill \cdot (1 + \frac{\sqrt{3}h}{range}) \cdot exp(- \frac{\sqrt{3}h}{range})} where \eqn{C(0) = nugget + sill}.
+         \item \emph{Mat5} - matern covariance function with v=5/2: \eqn{C(h) = sill \cdot (1 + \frac{\sqrt{5}h}{range} + \frac{5h^{2}}{3 \cdot range^{2}}) \cdot exp(- \frac{\sqrt{5}h}{range})} where \eqn{C(0) = nugget + sill}.     
+	   }}
 	\item{sill}{sill parameter of covariance function}	
 	\item{range}{range parameter of covariance function}
 	\item{nugget}{nugget parameter of covariance function}
@@ -29,6 +31,7 @@ gpuSim <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, krig
 	\item{as.sp}{TRUE or FALSE, should result be returned as SpatialPixelsDataFrame or as an simple array?}
 	\item{check}{TRUE or FALSE, should fft of covariance matrix be checked for negative real parts?}
 	\item{verify}{If TRUE, an average experimental variogram of the simulation results is generated and plotted together with the theoretical variogram model. Depending on the simulation dimensions, this may take some time. Using verification forces as.sp = TRUE.}
+	\item{prec.double}{If TRUE, double precision is used. Notice that the performance for double precision strongly depends on the available hardware.}
 }
 
 \details{

@@ -1,5 +1,5 @@
-\name{covID}
-\alias{covID}
+\name{.covID}
+\alias{.covID}
 \title{Internal ID representation for covariance functions}
 
 \description{
@@ -7,7 +7,7 @@ Returns the internal ID of a given covariance function.
 }
 
 \usage{
-	covID(covmodel) 
+	.covID(covmodel) 
 }
 
 \arguments{
@@ -20,7 +20,7 @@ Returns the internal ID of a given covariance function.
 \author{Marius Appel \email{marius.appel@uni-muenster.de}}
 
 \examples{
-covID("Sph") 
+.covID("Sph") 
 }
 
 \keyword{cuda}

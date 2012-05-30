@@ -1,5 +1,5 @@
-\name{gpuSimCatchError}
-\alias{gpuSimCatchError}
+\name{.gpuSimCatchError}
+\alias{.gpuSimCatchError}
 \title{Internal error handling of gpu simulation}
 
 \description{
@@ -7,7 +7,7 @@ Returns an error message for an internal specified integer code.
 }
 
 \usage{
-	gpuSimCatchError(code) 
+	.gpuSimCatchError(code) 
 }
 
 \arguments{
@@ -20,7 +20,7 @@ Returns an error message for an internal specified integer code.
 \author{Marius Appel \email{marius.appel@uni-muenster.de}}
 
 \examples{
-gpuSimCatchError(0) # <- OK
+.gpuSimCatchError(0) # <- OK
 }
 
 \keyword{cuda}
