@@ -23,9 +23,11 @@
 #define EXPORT
 #endif
 
-
+#ifdef PI
+#undef PI
+#endif
 #define PI 3.1415926535897932384626433832795 
-enum covfunc {EXP=0, SPH=1, GAU=2, MAT3=3,MAT5=4}; 
+enum covfunc {EXP=0, SPH=1, GAU=2, MAT3=3, MAT5=4}; 
 enum kriging {SIMPLE=0, ORDINARY=1};
 enum errcode {OK=0, ERROR_NEGATIVE_COV_VALUES=1, ERROR_UNKNOWN = 2, ERROR_NO_DEVICE = 3};
 

@@ -27,12 +27,43 @@ __device__ float covExpKernel_2f(float ax, float ay, float bx, float by, float s
 }
 
 
+__device__ float covExpAnisKernel_2f(float ax, float ay, float bx, float by, float sill, float range, float nugget, float alpha, float afac1) {
+	float dist = 0.0;
+	float temp = 0.0;
+	float dx = ax-bx;
+	float dy = ay-by;
+	
+	temp = dx * cosf(alpha) + dy * sinf(alpha);
+	dist += temp * temp;
+	temp = afac1 * (dx * (-sinf(alpha)) + dy * cosf(alpha));
+	dist += temp * temp;
+	dist = sqrtf(dist);
+
+	return ((dist == 0.0f)? (nugget + sill) : (sill*expf(-dist/range)));
+}
+
+
 
 __device__ float covGauKernel_2f(float ax, float ay, float bx, float by, float sill, float range, float nugget) {
 	float dist2 = (ax-bx)*(ax-bx)+(ay-by)*(ay-by);
 	return ((dist2 == 0.0f)? (nugget + sill) : (sill*expf(-dist2/(range*range))));
 }
 
+
+__device__ float covGauAnisKernel_2f(float ax, float ay, float bx, float by, float sill, float range, float nugget, float alpha, float afac1) {
+	float dist = 0.0;
+	float temp = 0.0;
+	float dx = ax-bx;
+	float dy = ay-by;
+	
+	temp = dx * cosf(alpha) + dy * sinf(alpha);
+	dist += temp * temp;
+	temp = afac1 * (dx * (-sinf(alpha)) + dy * cosf(alpha));
+	dist += temp * temp;
+	//dist = sqrtf(dist);
+
+	return ((dist == 0.0f)? (nugget + sill) : (sill*expf(-dist/(range*range))));
+}
 
 
 
@@ -45,31 +76,77 @@ __device__ float covSphKernel_2f(float ax, float ay, float bx, float by, float s
 	return 0.0f; // WARNING,  sample cov matrix may be not regular for wenn point pairs with distance > range
 }
 
+__device__ float covSphAnisKernel_2f(float ax, float ay, float bx, float by, float sill, float range, float nugget, float alpha, float afac1) {
+	float dist = 0.0;
+	float temp = 0.0;
+	float dx = ax-bx;
+	float dy = ay-by;
+	
+	temp = dx * cosf(alpha) + dy * sinf(alpha);
+	dist += temp * temp;
+	temp = afac1 * (dx * (-sinf(alpha)) + dy * cosf(alpha));
+	dist += temp * temp;
+	dist = sqrtf(dist);
 
+	if (dist == 0.0) 
+		return(nugget + sill);	
+	else if(dist <= range) 
+		return sill * (1.0f - (((3.0f*dist) / (2.0f*range)) - ((dist * dist * dist) / (2.0f * range * range * range)) ));	
+	return 0.0f; // WARNING,  sample cov matrix may be not regular for wenn point pairs with distance > range
+
+}
 
 
 
 
 __device__ float covMat3Kernel_2f(float ax, float ay, float bx, float by, float sill, float range, float nugget) {
-	float SQRT3 = 1.732050807568877f;
 	float dist = sqrtf((ax-bx)*(ax-bx)+(ay-by)*(ay-by));
+	return ((dist == 0.0f)? (nugget + sill) : (sill*(1+SQRT3*dist/range)*expf(-SQRT3*dist/range)));
+}
+__device__ float covMat3AnisKernel_2f(float ax, float ay, float bx, float by, float sill, float range, float nugget, float alpha, float afac1) {
+	float dist = 0.0;
+	float temp = 0.0;
+	float dx = ax-bx;
+	float dy = ay-by;
+	
+	temp = dx * cosf(alpha) + dy * sinf(alpha);
+	dist += temp * temp;
+	temp = afac1 * (dx * (-sinf(alpha)) + dy * cosf(alpha));
+	dist += temp * temp;
+	dist = sqrtf(dist);
+
 	return ((dist == 0.0f)? (nugget + sill) : (sill*(1+SQRT3*dist/range)*expf(-SQRT3*dist/range)));
 }
 
 
+
+
+
 __device__ float covMat5Kernel_2f(float ax, float ay, float bx, float by, float sill, float range, float nugget) {
-	float SQRT5 = 2.23606797749979f;
 	float dist = sqrtf((ax-bx)*(ax-bx)+(ay-by)*(ay-by));
+	return ((dist == 0.0f)? (nugget + sill) : (sill * (1 + SQRT5*dist/range + 5*dist*dist/3*range*range) * expf(-SQRT5*dist/range)));
+}
+
+__device__ float covMat5AnisKernel_2f(float ax, float ay, float bx, float by, float sill, float range, float nugget, float alpha, float afac1) {
+	float dist = 0.0;
+	float temp = 0.0;
+	float dx = ax-bx;
+	float dy = ay-by;
+	
+	temp = dx * cosf(alpha) + dy * sinf(alpha);
+	dist += temp * temp;
+	temp = afac1 * (dx * (-sinf(alpha)) + dy * cosf(alpha));
+	dist += temp * temp;
+	dist = sqrtf(dist);
+
 	return ((dist == 0.0f)? (nugget + sill) : (sill * (1 + SQRT5*dist/range + 5*dist*dist/3*range*range) * expf(-SQRT5*dist/range)));
 }
 
 
 
 
-
-
 // Converts real float array into cufftComplex array
-__global__ void realToComplexKernel_f(cufftComplex *c, float* r, int n) {
+__global__ void realToComplexKernel_2f(cufftComplex *c, float* r, int n) {
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
 	if (i < n) {
 		c[i].x = r[i];
@@ -91,14 +168,33 @@ __global__ void ReDiv_2f(float *out, cufftComplex *c, float div,int nx, int ny, 
 
 
 
-// TODO: 3 dimensional -> 
+
+
+
+
 
 // Covariance sampling of a regular grid
-__global__ void sampleCovExpKernel_2f(cufftComplex *trickgrid, cufftComplex *grid, cufftComplex* cov, float xc, float yc, float sill, float range, float nugget, int n, int m) {
+__global__ void sampleCovKernel_2f(cufftComplex *trickgrid, cufftComplex *grid, cufftComplex* cov, float xc, float yc, int model, float sill, float range, float nugget, int n, int m) {
 	int col = threadIdx.x + blockIdx.x * blockDim.x;
 	int row = threadIdx.y + blockIdx.y * blockDim.y;
 	if (col < n && row < m) {
-		cov[row*n+col].x = covExpKernel_2f(grid[row*n+col].x,grid[row*n+col].y,xc,yc,sill,range,nugget);
+		switch (model) {
+		case EXP:
+			cov[row*n+col].x = covExpKernel_2f(grid[row*n+col].x,grid[row*n+col].y,xc,yc,sill,range,nugget);
+			break;
+		case GAU:
+			cov[row*n+col].x = covGauKernel_2f(grid[row*n+col].x,grid[row*n+col].y,xc,yc,sill,range,nugget);
+			break;
+		case SPH:
+			cov[row*n+col].x = covSphKernel_2f(grid[row*n+col].x,grid[row*n+col].y,xc,yc,sill,range,nugget);
+			break;
+		case MAT3:
+			cov[row*n+col].x = covMat3Kernel_2f(grid[row*n+col].x,grid[row*n+col].y,xc,yc,sill,range,nugget);
+			break;
+		case MAT5:
+			cov[row*n+col].x = covMat5Kernel_2f(grid[row*n+col].x,grid[row*n+col].y,xc,yc,sill,range,nugget);
+			break;
+		}	
 		cov[row*n+col].y = 0;	
 		if (col == n/2-1 && row == m/2-1) {
 			trickgrid[row*n+col].x = 1.0f;
@@ -112,16 +208,27 @@ __global__ void sampleCovExpKernel_2f(cufftComplex *trickgrid, cufftComplex *gri
 }
 
 
-
-
-
-
-// Covariance sampling of a regular grid
-__global__ void sampleCovGauKernel_2f(cufftComplex *trickgrid, cufftComplex *grid, cufftComplex* cov, float xc, float yc, float sill, float range, float nugget, int n, int m) {
+__global__ void sampleCovAnisKernel_2f(cufftComplex *trickgrid, cufftComplex *grid, cufftComplex* cov, float xc, float yc, int model, float sill, float range, float nugget, float alpha, float afac1, int n, int m) {
 	int col = threadIdx.x + blockIdx.x * blockDim.x;
 	int row = threadIdx.y + blockIdx.y * blockDim.y;
 	if (col < n && row < m) {
-		cov[row*n+col].x = covGauKernel_2f(grid[row*n+col].x,grid[row*n+col].y,xc,yc,sill,range,nugget);
+		switch (model) {
+		case EXP:
+			cov[row*n+col].x = covExpAnisKernel_2f(grid[row*n+col].x,grid[row*n+col].y,xc,yc,sill,range,nugget,alpha,afac1);
+			break;
+		case GAU:
+			cov[row*n+col].x = covGauAnisKernel_2f(grid[row*n+col].x,grid[row*n+col].y,xc,yc,sill,range,nugget,alpha,afac1);
+			break;
+		case SPH:
+			cov[row*n+col].x = covSphAnisKernel_2f(grid[row*n+col].x,grid[row*n+col].y,xc,yc,sill,range,nugget,alpha,afac1);
+			break;
+		case MAT3:
+			cov[row*n+col].x = covMat3AnisKernel_2f(grid[row*n+col].x,grid[row*n+col].y,xc,yc,sill,range,nugget,alpha,afac1);
+			break;
+		case MAT5:
+			cov[row*n+col].x = covMat5AnisKernel_2f(grid[row*n+col].x,grid[row*n+col].y,xc,yc,sill,range,nugget,alpha,afac1);
+			break;
+		}	
 		cov[row*n+col].y = 0;	
 		if (col == n/2-1 && row == m/2-1) {
 			trickgrid[row*n+col].x = 1.0f;
@@ -135,63 +242,6 @@ __global__ void sampleCovGauKernel_2f(cufftComplex *trickgrid, cufftComplex *gri
 }
 
 
-
-
-
-// Covariance sampling of a regular grid
-__global__ void sampleCovSphKernel_2f(cufftComplex *trickgrid, cufftComplex *grid, cufftComplex* cov, float xc, float yc, float sill, float range, float nugget, int n, int m) {
-	int col = threadIdx.x + blockIdx.x * blockDim.x;
-	int row = threadIdx.y + blockIdx.y * blockDim.y;
-	if (col < n && row < m) {
-		cov[row*n+col].x = covSphKernel_2f(grid[row*n+col].x,grid[row*n+col].y,xc,yc,sill,range,nugget);
-		cov[row*n+col].y = 0;	
-		if (col == n/2-1 && row == m/2-1) {
-			trickgrid[row*n+col].x = 1.0f;
-			trickgrid[row*n+col].y = 0.0f;
-		}
-		else {
-			trickgrid[row*n+col].x = 0.0f;
-			trickgrid[row*n+col].y = 0.0f;
-		}
-	}
-}
-
-
-// Covariance sampling of a regular grid
-__global__ void sampleCovMat3Kernel_2f(cufftComplex *trickgrid, cufftComplex *grid, cufftComplex* cov, float xc, float yc, float sill, float range, float nugget, int n, int m) {
-	int col = threadIdx.x + blockIdx.x * blockDim.x;
-	int row = threadIdx.y + blockIdx.y * blockDim.y;
-	if (col < n && row < m) {
-		cov[row*n+col].x = covMat3Kernel_2f(grid[row*n+col].x,grid[row*n+col].y,xc,yc,sill,range,nugget);
-		cov[row*n+col].y = 0;	
-		if (col == n/2-1 && row == m/2-1) {
-			trickgrid[row*n+col].x = 1.0f;
-			trickgrid[row*n+col].y = 0.0f;
-		}
-		else {
-			trickgrid[row*n+col].x = 0.0f;
-			trickgrid[row*n+col].y = 0.0f;
-		}
-	}
-}
-
-// Covariance sampling of a regular grid
-__global__ void sampleCovMat5Kernel_2f(cufftComplex *trickgrid, cufftComplex *grid, cufftComplex* cov, float xc, float yc, float sill, float range, float nugget, int n, int m) {
-	int col = threadIdx.x + blockIdx.x * blockDim.x;
-	int row = threadIdx.y + blockIdx.y * blockDim.y;
-	if (col < n && row < m) {
-		cov[row*n+col].x = covMat5Kernel_2f(grid[row*n+col].x,grid[row*n+col].y,xc,yc,sill,range,nugget);
-		cov[row*n+col].y = 0;	
-		if (col == n/2-1 && row == m/2-1) {
-			trickgrid[row*n+col].x = 1.0f;
-			trickgrid[row*n+col].y = 0.0f;
-		}
-		else {
-			trickgrid[row*n+col].x = 0.0f;
-			trickgrid[row*n+col].y = 0.0f;
-		}
-	}
-}
 
 
 
@@ -205,7 +255,7 @@ __global__ void multKernel_2f(cufftComplex *fftgrid, int n, int m) {
 
 
 // Devides spectral grid elementwise by fftgrid
-__global__ void divideSpectrumKernel_f(cufftComplex *spectrum, cufftComplex *fftgrid) {
+__global__ void divideSpectrumKernel_2f(cufftComplex *spectrum, cufftComplex *fftgrid) {
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
 	float a = spectrum[i].x;
 	float b = spectrum[i].y;
@@ -220,7 +270,7 @@ __global__ void divideSpectrumKernel_f(cufftComplex *spectrum, cufftComplex *fft
 
 
 // Element-wise sqrt from spectral grid
-__global__ void sqrtKernel_f(cufftComplex *spectrum) {
+__global__ void sqrtKernel_2f(cufftComplex *spectrum) {
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
 	float re = spectrum[i].x;
 	float im = spectrum[i].y;
@@ -244,7 +294,7 @@ __global__ void sqrtKernel_f(cufftComplex *spectrum) {
 
 
 // Element-wise multiplication of two complex arrays
-__global__ void elementProduct_f(cufftComplex *c, cufftComplex *a, cufftComplex *b, int n) {
+__global__ void elementProduct_2f(cufftComplex *c, cufftComplex *a, cufftComplex *b, int n) {
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
 	if (i < n) {
 		c[i].x = a[i].x * b[i].x - a[i].y * b[i].y;
@@ -260,7 +310,8 @@ __global__ void elementProduct_f(cufftComplex *c, cufftComplex *a, cufftComplex 
 #endif
 
 
-__global__ void krigingExpKernel_2f(float *prediction, float2 *srcXY, float xmin, float dx, float ymin, float dy,  float *y,  float range, float sill, float nugget, int numSrc, int nx, int ny)
+
+__global__ void krigingKernel_2f(float *prediction, float2 *srcXY, float xmin, float dx, float ymin, float dy,  float *y,  int model, float range, float sill, float nugget, int numSrc, int nx, int ny)
 {	
 	int bx = blockIdx.x;
     int tx = threadIdx.x;
@@ -287,7 +338,23 @@ __global__ void krigingExpKernel_2f(float *prediction, float2 *srcXY, float xmin
 		if ((bx*BLOCK_SIZE_KRIGE1 + tx)<nx*ny){	
 			for (int i=0;i<BLOCK_SIZE_KRIGE1;++i){
 				if ((b+i)<numSrc){
-					sum += covExpKernel_2f(yr_x,yr_y,Xs[i][0],Xs[i][1],sill,range,nugget) *qs[i];                         
+					switch (model) {
+					case EXP:
+						sum += covExpKernel_2f(yr_x,yr_y,Xs[i][0],Xs[i][1],sill,range,nugget) *qs[i]; 
+						break;
+					case GAU:
+						sum += covGauKernel_2f(yr_x,yr_y,Xs[i][0],Xs[i][1],sill,range,nugget) *qs[i]; 
+						break;
+					case SPH:
+						sum += covSphKernel_2f(yr_x,yr_y,Xs[i][0],Xs[i][1],sill,range,nugget) *qs[i]; 
+						break;
+					case MAT3:
+						sum += covMat3Kernel_2f(yr_x,yr_y,Xs[i][0],Xs[i][1],sill,range,nugget) *qs[i]; 
+						break;
+					case MAT5:
+						sum += covMat5Kernel_2f(yr_x,yr_y,Xs[i][0],Xs[i][1],sill,range,nugget) *qs[i]; 
+						break;
+					}
 				}
 			}
 		}
@@ -297,10 +364,7 @@ __global__ void krigingExpKernel_2f(float *prediction, float2 *srcXY, float xmin
 }
 
 
-
-
-
-__global__ void krigingGauKernel_2f(float *prediction, float2 *srcXY, float xmin, float dx, float ymin, float dy,  float *y,  float range, float sill, float nugget, int numSrc, int nx, int ny)
+__global__ void krigingAnisKernel_2f(float *prediction, float2 *srcXY, float xmin, float dx, float ymin, float dy,  float *y,  int model, float range, float sill, float nugget, float alpha, float afac1, int numSrc, int nx, int ny)
 {	
 	int bx = blockIdx.x;
     int tx = threadIdx.x;
@@ -313,7 +377,7 @@ __global__ void krigingGauKernel_2f(float *prediction, float2 *srcXY, float xmin
 
     if ((bx*BLOCK_SIZE_KRIGE1 + tx)<nx*ny){
 		yr_x = ((bx*BLOCK_SIZE_KRIGE1 + tx) % nx) * dx + xmin; // grid coords
-		yr_y = (ny - 1 - (int)((bx*BLOCK_SIZE_KRIGE1 + tx)/nx)) * dy + ymin; // grid coords
+		yr_y = (ny - 1 -(int)((bx*BLOCK_SIZE_KRIGE1 + tx)/nx)) * dy + ymin; // grid coords 
 	}
 	__syncthreads();
 	for (int b=0;b<numSrc;b+=BLOCK_SIZE_KRIGE1){
@@ -327,7 +391,23 @@ __global__ void krigingGauKernel_2f(float *prediction, float2 *srcXY, float xmin
 		if ((bx*BLOCK_SIZE_KRIGE1 + tx)<nx*ny){	
 			for (int i=0;i<BLOCK_SIZE_KRIGE1;++i){
 				if ((b+i)<numSrc){
-					sum += covGauKernel_2f(yr_x,yr_y,Xs[i][0],Xs[i][1],sill,range,nugget) *qs[i]; 	                         
+					switch (model) {
+					case EXP:
+						sum += covExpAnisKernel_2f(yr_x,yr_y,Xs[i][0],Xs[i][1],sill,range,nugget,alpha,afac1) *qs[i]; 
+						break;
+					case GAU:
+						sum += covGauAnisKernel_2f(yr_x,yr_y,Xs[i][0],Xs[i][1],sill,range,nugget,alpha,afac1) *qs[i]; 
+						break;
+					case SPH:
+						sum += covSphAnisKernel_2f(yr_x,yr_y,Xs[i][0],Xs[i][1],sill,range,nugget,alpha,afac1) *qs[i]; 
+						break;
+					case MAT3:
+						sum += covMat3AnisKernel_2f(yr_x,yr_y,Xs[i][0],Xs[i][1],sill,range,nugget,alpha,afac1) *qs[i]; 
+						break;
+					case MAT5:
+						sum += covMat5AnisKernel_2f(yr_x,yr_y,Xs[i][0],Xs[i][1],sill,range,nugget,alpha,afac1) *qs[i]; 
+						break;
+					}
 				}
 			}
 		}
@@ -336,131 +416,6 @@ __global__ void krigingGauKernel_2f(float *prediction, float2 *srcXY, float xmin
 	if ((bx*BLOCK_SIZE_KRIGE1 + tx)<nx*ny) prediction[bx*BLOCK_SIZE_KRIGE1 + tx] = sum + y[numSrc];	
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-__global__ void krigingSphKernel_2f(float *prediction, float2 *srcXY, float xmin, float dx, float ymin, float dy,  float *y,  float range, float sill, float nugget, int numSrc, int nx, int ny)
-{	
-	int bx = blockIdx.x;
-    int tx = threadIdx.x;
-	float sum=0.0f;
-	float yr_x, yr_y;
-	
-	__shared__ float qs[BLOCK_SIZE_KRIGE1];
-	__shared__ float Xs[BLOCK_SIZE_KRIGE1][2];
-
-    if ((bx*BLOCK_SIZE_KRIGE1 + tx)<nx*ny){
-		yr_x = ((bx*BLOCK_SIZE_KRIGE1 + tx) % nx) * dx + xmin; // grid coords
-		yr_y = (ny - 1 - (int)((bx*BLOCK_SIZE_KRIGE1 + tx)/nx)) * dy + ymin; // grid coords
-	}
-	__syncthreads();
-	for (int b=0;b<numSrc;b+=BLOCK_SIZE_KRIGE1){
-		
-		if ((b+tx)<numSrc){         
-			Xs[tx][0]=srcXY[(tx+b)].x;
-			Xs[tx][1]=srcXY[(tx+b)].y;
-			qs[tx]=y[tx+b];
-		}
-		__syncthreads();
-		if ((bx*BLOCK_SIZE_KRIGE1 + tx)<nx*ny){	
-			for (int i=0;i<BLOCK_SIZE_KRIGE1;++i){
-				if ((b+i)<numSrc){
-					sum += covSphKernel_2f(yr_x,yr_y,Xs[i][0],Xs[i][1],sill,range,nugget) *qs[i]; 	                         
-				}
-			}
-		}
-		__syncthreads();      
-	}
-	if ((bx*BLOCK_SIZE_KRIGE1 + tx)<nx*ny) prediction[bx*BLOCK_SIZE_KRIGE1 + tx] = sum + y[numSrc];	
-}
-
-
-
-
-
-__global__ void krigingMat3Kernel_2f(float *prediction, float2 *srcXY, float xmin, float dx, float ymin, float dy,  float *y,  float range, float sill, float nugget, int numSrc, int nx, int ny)
-{	
-	int bx = blockIdx.x;
-    int tx = threadIdx.x;
-	float sum=0.0f;
-	float yr_x, yr_y;
-	
-	__shared__ float qs[BLOCK_SIZE_KRIGE1];
-	__shared__ float Xs[BLOCK_SIZE_KRIGE1][2];
-
-    if ((bx*BLOCK_SIZE_KRIGE1 + tx)<nx*ny){
-		yr_x = ((bx*BLOCK_SIZE_KRIGE1 + tx) % nx) * dx + xmin; // grid coords
-		yr_y = (ny - 1 - (int)((bx*BLOCK_SIZE_KRIGE1 + tx)/nx)) * dy + ymin; // grid coords
-	}
-	__syncthreads();
-	for (int b=0;b<numSrc;b+=BLOCK_SIZE_KRIGE1){
-		
-		if ((b+tx)<numSrc){         
-			Xs[tx][0]=srcXY[(tx+b)].x;
-			Xs[tx][1]=srcXY[(tx+b)].y;
-			qs[tx]=y[tx+b];
-		}
-		__syncthreads();
-		if ((bx*BLOCK_SIZE_KRIGE1 + tx)<nx*ny){	
-			for (int i=0;i<BLOCK_SIZE_KRIGE1;++i){
-				if ((b+i)<numSrc){
-					sum += covMat3Kernel_2f(yr_x,yr_y,Xs[i][0],Xs[i][1],sill,range,nugget) *qs[i]; 	                         
-				}
-			}
-		}
-		__syncthreads();      
-	}
-	if ((bx*BLOCK_SIZE_KRIGE1 + tx)<nx*ny) prediction[bx*BLOCK_SIZE_KRIGE1 + tx] = sum + y[numSrc];	
-}
-
-
-
-
-
-__global__ void krigingMat5Kernel_2f(float *prediction, float2 *srcXY, float xmin, float dx, float ymin, float dy,  float *y,  float range, float sill, float nugget, int numSrc, int nx, int ny)
-{	
-	int bx = blockIdx.x;
-    int tx = threadIdx.x;
-	float sum=0.0f;
-	float yr_x, yr_y;
-	
-	__shared__ float qs[BLOCK_SIZE_KRIGE1];
-	__shared__ float Xs[BLOCK_SIZE_KRIGE1][2];
-
-    if ((bx*BLOCK_SIZE_KRIGE1 + tx)<nx*ny){
-		yr_x = ((bx*BLOCK_SIZE_KRIGE1 + tx) % nx) * dx + xmin; // grid coords
-		yr_y = (ny - 1 - (int)((bx*BLOCK_SIZE_KRIGE1 + tx)/nx)) * dy + ymin; // grid coords
-	}
-	__syncthreads();
-	for (int b=0;b<numSrc;b+=BLOCK_SIZE_KRIGE1){
-		
-		if ((b+tx)<numSrc){         
-			Xs[tx][0]=srcXY[(tx+b)].x;
-			Xs[tx][1]=srcXY[(tx+b)].y;
-			qs[tx]=y[tx+b];
-		}
-		__syncthreads();
-		if ((bx*BLOCK_SIZE_KRIGE1 + tx)<nx*ny){	
-			for (int i=0;i<BLOCK_SIZE_KRIGE1;++i){
-				if ((b+i)<numSrc){
-					sum += covMat5Kernel_2f(yr_x,yr_y,Xs[i][0],Xs[i][1],sill,range,nugget) *qs[i]; 	                         
-				}
-			}
-		}
-		__syncthreads();      
-	}
-	if ((bx*BLOCK_SIZE_KRIGE1 + tx)<nx*ny) prediction[bx*BLOCK_SIZE_KRIGE1 + tx] = sum + y[numSrc];	
-}
 
 
 
@@ -472,7 +427,9 @@ __global__ void krigingMat5Kernel_2f(float *prediction, float2 *srcXY, float xmi
 #define BLOCK_SIZE_KRIGE1 256
 #endif
 
-__global__ void krigingSimpleExpKernel_2f(float *prediction, float2 *srcXY, float xmin, float dx, float ymin, float dy,  float *y,  float range, float sill, float nugget, int numSrc, int nx, int ny, float mean)
+
+
+__global__ void krigingSimpleKernel_2f(float *prediction, float2 *srcXY, float xmin, float dx, float ymin, float dy,  float *y,  int model, float range, float sill, float nugget, int numSrc, int nx, int ny, float mean)
 {	
 	int bx = blockIdx.x;
     int tx = threadIdx.x;
@@ -499,7 +456,23 @@ __global__ void krigingSimpleExpKernel_2f(float *prediction, float2 *srcXY, floa
 		if ((bx*BLOCK_SIZE_KRIGE1 + tx)<nx*ny){	
 			for (int i=0;i<BLOCK_SIZE_KRIGE1;++i){
 				if ((b+i)<numSrc){
-					sum += covExpKernel_2f(yr_x,yr_y,Xs[i][0],Xs[i][1],sill,range,nugget) *qs[i];                         
+					switch (model) {
+					case EXP:
+						sum += covExpKernel_2f(yr_x,yr_y,Xs[i][0],Xs[i][1],sill,range,nugget) *qs[i]; 
+						break;
+					case GAU:
+						sum += covGauKernel_2f(yr_x,yr_y,Xs[i][0],Xs[i][1],sill,range,nugget) *qs[i]; 
+						break;
+					case SPH:
+						sum += covSphKernel_2f(yr_x,yr_y,Xs[i][0],Xs[i][1],sill,range,nugget) *qs[i]; 
+						break;
+					case MAT3:
+						sum += covMat3Kernel_2f(yr_x,yr_y,Xs[i][0],Xs[i][1],sill,range,nugget) *qs[i]; 
+						break;
+					case MAT5:
+						sum += covMat5Kernel_2f(yr_x,yr_y,Xs[i][0],Xs[i][1],sill,range,nugget) *qs[i]; 
+						break;
+					}
 				}
 			}
 		}
@@ -509,14 +482,7 @@ __global__ void krigingSimpleExpKernel_2f(float *prediction, float2 *srcXY, floa
 }
 
 
-
-
-
-
-
-
-
-__global__ void krigingSimpleGauKernel_2f(float *prediction, float2 *srcXY, float xmin, float dx, float ymin, float dy,  float *y,  float range, float sill, float nugget, int numSrc, int nx, int ny, float mean)
+__global__ void krigingSimpleAnisKernel_2f(float *prediction, float2 *srcXY, float xmin, float dx, float ymin, float dy,  float *y,  int model, float range, float sill, float nugget, float alpha, float afac1, int numSrc, int nx, int ny, float mean)
 {	
 	int bx = blockIdx.x;
     int tx = threadIdx.x;
@@ -529,7 +495,7 @@ __global__ void krigingSimpleGauKernel_2f(float *prediction, float2 *srcXY, floa
 
     if ((bx*BLOCK_SIZE_KRIGE1 + tx)<nx*ny){
 		yr_x = ((bx*BLOCK_SIZE_KRIGE1 + tx) % nx) * dx + xmin; // grid coords
-		yr_y = (ny - 1 - (int)((bx*BLOCK_SIZE_KRIGE1 + tx)/nx)) * dy + ymin; // grid coords
+		yr_y = (ny - 1 -(int)((bx*BLOCK_SIZE_KRIGE1 + tx)/nx)) * dy + ymin; // grid coords 
 	}
 	__syncthreads();
 	for (int b=0;b<numSrc;b+=BLOCK_SIZE_KRIGE1){
@@ -543,7 +509,23 @@ __global__ void krigingSimpleGauKernel_2f(float *prediction, float2 *srcXY, floa
 		if ((bx*BLOCK_SIZE_KRIGE1 + tx)<nx*ny){	
 			for (int i=0;i<BLOCK_SIZE_KRIGE1;++i){
 				if ((b+i)<numSrc){
-					sum += covGauKernel_2f(yr_x,yr_y,Xs[i][0],Xs[i][1],sill,range,nugget) *qs[i]; 	                         
+					switch (model) {
+					case EXP:
+						sum += covExpAnisKernel_2f(yr_x,yr_y,Xs[i][0],Xs[i][1],sill,range,nugget,alpha,afac1) *qs[i]; 
+						break;
+					case GAU:
+						sum += covGauAnisKernel_2f(yr_x,yr_y,Xs[i][0],Xs[i][1],sill,range,nugget,alpha,afac1) *qs[i]; 
+						break;
+					case SPH:
+						sum += covSphAnisKernel_2f(yr_x,yr_y,Xs[i][0],Xs[i][1],sill,range,nugget,alpha,afac1) *qs[i]; 
+						break;
+					case MAT3:
+						sum += covMat3AnisKernel_2f(yr_x,yr_y,Xs[i][0],Xs[i][1],sill,range,nugget,alpha,afac1) *qs[i]; 
+						break;
+					case MAT5:
+						sum += covMat5AnisKernel_2f(yr_x,yr_y,Xs[i][0],Xs[i][1],sill,range,nugget,alpha,afac1) *qs[i]; 
+						break;
+					}
 				}
 			}
 		}
@@ -551,128 +533,6 @@ __global__ void krigingSimpleGauKernel_2f(float *prediction, float2 *srcXY, floa
 	}
 	if ((bx*BLOCK_SIZE_KRIGE1 + tx)<nx*ny) prediction[bx*BLOCK_SIZE_KRIGE1 + tx] = sum + mean;	
 }
-
-
-
-
-
-
-
-__global__ void krigingSimpleSphKernel_2f(float *prediction, float2 *srcXY, float xmin, float dx, float ymin, float dy,  float *y,  float range, float sill, float nugget, int numSrc, int nx, int ny,float mean)
-{	
-	int bx = blockIdx.x;
-    int tx = threadIdx.x;
-
-	float sum=0.0f;
-	float yr_x, yr_y;
-	
-	__shared__ float qs[BLOCK_SIZE_KRIGE1];
-	__shared__ float Xs[BLOCK_SIZE_KRIGE1][2];
-
-    if ((bx*BLOCK_SIZE_KRIGE1 + tx)<nx*ny){
-		yr_x = ((bx*BLOCK_SIZE_KRIGE1 + tx) % nx) * dx + xmin; // grid coords
-		yr_y = (ny - 1 - (int)((bx*BLOCK_SIZE_KRIGE1 + tx)/nx)) * dy + ymin; // grid coords
-	}
-	__syncthreads();
-	for (int b=0;b<numSrc;b+=BLOCK_SIZE_KRIGE1){
-		
-		if ((b+tx)<numSrc){         
-			Xs[tx][0]=srcXY[(tx+b)].x;
-			Xs[tx][1]=srcXY[(tx+b)].y;
-			qs[tx]=y[tx+b];
-		}
-		__syncthreads();
-		if ((bx*BLOCK_SIZE_KRIGE1 + tx)<nx*ny){	
-			for (int i=0;i<BLOCK_SIZE_KRIGE1;++i){
-				if ((b+i)<numSrc){
-					sum += covSphKernel_2f(yr_x,yr_y,Xs[i][0],Xs[i][1],sill,range,nugget) *qs[i]; 	                         
-				}
-			}
-		}
-		__syncthreads();      
-	}
-	if ((bx*BLOCK_SIZE_KRIGE1 + tx)<nx*ny) prediction[bx*BLOCK_SIZE_KRIGE1 + tx] = sum + mean;	
-}
-
-
-
-
-
-__global__ void krigingSimpleMat3Kernel_2f(float *prediction, float2 *srcXY, float xmin, float dx, float ymin, float dy,  float *y,  float range, float sill, float nugget, int numSrc, int nx, int ny,float mean)
-{	
-	int bx = blockIdx.x;
-    int tx = threadIdx.x;
-
-	float sum=0.0f;
-	float yr_x, yr_y;
-	
-	__shared__ float qs[BLOCK_SIZE_KRIGE1];
-	__shared__ float Xs[BLOCK_SIZE_KRIGE1][2];
-
-    if ((bx*BLOCK_SIZE_KRIGE1 + tx)<nx*ny){
-		yr_x = ((bx*BLOCK_SIZE_KRIGE1 + tx) % nx) * dx + xmin; // grid coords
-		yr_y = (ny - 1 - (int)((bx*BLOCK_SIZE_KRIGE1 + tx)/nx)) * dy + ymin; // grid coords
-	}
-	__syncthreads();
-	for (int b=0;b<numSrc;b+=BLOCK_SIZE_KRIGE1){
-		
-		if ((b+tx)<numSrc){         
-			Xs[tx][0]=srcXY[(tx+b)].x;
-			Xs[tx][1]=srcXY[(tx+b)].y;
-			qs[tx]=y[tx+b];
-		}
-		__syncthreads();
-		if ((bx*BLOCK_SIZE_KRIGE1 + tx)<nx*ny){	
-			for (int i=0;i<BLOCK_SIZE_KRIGE1;++i){
-				if ((b+i)<numSrc){
-					sum += covMat3Kernel_2f(yr_x,yr_y,Xs[i][0],Xs[i][1],sill,range,nugget) *qs[i]; 	                         
-				}
-			}
-		}
-		__syncthreads();      
-	}
-	if ((bx*BLOCK_SIZE_KRIGE1 + tx)<nx*ny) prediction[bx*BLOCK_SIZE_KRIGE1 + tx] = sum + mean;	
-}
-
-
-
-
-__global__ void krigingSimpleMat5Kernel_2f(float *prediction, float2 *srcXY, float xmin, float dx, float ymin, float dy,  float *y,  float range, float sill, float nugget, int numSrc, int nx, int ny,float mean)
-{	
-	int bx = blockIdx.x;
-    int tx = threadIdx.x;
-
-	float sum=0.0f;
-	float yr_x, yr_y;
-	
-	__shared__ float qs[BLOCK_SIZE_KRIGE1];
-	__shared__ float Xs[BLOCK_SIZE_KRIGE1][2];
-
-    if ((bx*BLOCK_SIZE_KRIGE1 + tx)<nx*ny){
-		yr_x = ((bx*BLOCK_SIZE_KRIGE1 + tx) % nx) * dx + xmin; // grid coords
-		yr_y = (ny - 1 - (int)((bx*BLOCK_SIZE_KRIGE1 + tx)/nx)) * dy + ymin; // grid coords
-	}
-	__syncthreads();
-	for (int b=0;b<numSrc;b+=BLOCK_SIZE_KRIGE1){
-		
-		if ((b+tx)<numSrc){         
-			Xs[tx][0]=srcXY[(tx+b)].x;
-			Xs[tx][1]=srcXY[(tx+b)].y;
-			qs[tx]=y[tx+b];
-		}
-		__syncthreads();
-		if ((bx*BLOCK_SIZE_KRIGE1 + tx)<nx*ny){	
-			for (int i=0;i<BLOCK_SIZE_KRIGE1;++i){
-				if ((b+i)<numSrc){
-					sum += covMat5Kernel_2f(yr_x,yr_y,Xs[i][0],Xs[i][1],sill,range,nugget) *qs[i]; 	                         
-				}
-			}
-		}
-		__syncthreads();      
-	}
-	if ((bx*BLOCK_SIZE_KRIGE1 + tx)<nx*ny) prediction[bx*BLOCK_SIZE_KRIGE1 + tx] = sum + mean;	
-}
-
 
 
 
@@ -681,13 +541,13 @@ __global__ void krigingSimpleMat5Kernel_2f(float *prediction, float2 *srcXY, flo
 
 
 // Adds interpolated residuals element-wise to the unconditional grid. Residual grid will be overwritten in-place
-__global__ void addResSim_f(float *res, float *uncond, int n) 
+__global__ void addResSim_2f(float *res, float *uncond, int n) 
 {
 	int id = blockIdx.x * blockDim.x + threadIdx.x;
 	if (id < n) res[id] += uncond[id];
 }
 
-__global__ void addResSimMean_f(float *res, float *uncond, int n, float mean) 
+__global__ void addResSimMean_2f(float *res, float *uncond, int n, float mean) 
 {
 	int id = blockIdx.x * blockDim.x + threadIdx.x;
 	if (id < n) res[id] += uncond[id] + mean;
@@ -805,7 +665,9 @@ extern "C" {
 #endif
 
 
-void EXPORT unconditionalSimInit_2f(float *p_xmin, float *p_xmax, int *p_nx, float *p_ymin, float *p_ymax, int *p_ny, float *p_sill, float *p_range, float *p_nugget, int *p_covmodel, int *do_check, int *ret_code) {
+void EXPORT unconditionalSimInit_2f(float *p_xmin, float *p_xmax, int *p_nx, float *p_ymin, float *p_ymax, int *p_ny, 
+									float *p_sill, float *p_range, float *p_nugget, int *p_covmodel, float *p_anis_direction, 
+									float *p_anis_ratio, int *do_check, int *ret_code) {
 	*ret_code = OK;
 	cudaError_t cudaStatus;
 	
@@ -839,7 +701,8 @@ void EXPORT unconditionalSimInit_2f(float *p_xmin, float *p_xmax, int *p_nx, flo
 	for (int i=0; i<uncond_global_2f.n; ++i) { // i =  col index
 		for (int j=0; j<uncond_global_2f.m; ++j) { // j = row index 
 			h_grid_c[j*uncond_global_2f.n+i].x = *p_xmin + (i+1) * uncond_global_2f.dx; 
-			h_grid_c[j*uncond_global_2f.n+i].y = *p_ymin + (j+1) * uncond_global_2f.dy;  
+			//h_grid_c[j*uncond_global_2f.n+i].y = *p_ymin + (j+1) * uncond_global_2f.dy;  
+			h_grid_c[j*uncond_global_2f.n+i].y = *p_ymin + (uncond_global_2f.m-1-j)* uncond_global_2f.dy;			
 		}
 	}
 	
@@ -849,6 +712,9 @@ void EXPORT unconditionalSimInit_2f(float *p_xmin, float *p_xmax, int *p_nx, flo
 	float sill = *p_sill;
 	float range = *p_range;
 	float nugget = *p_nugget;
+	bool isotropic = (*p_anis_ratio == 1.0);
+	float afac1 = 1.0/(*p_anis_ratio);
+	float alpha = (90.0 - *p_anis_direction) * (PI / 180.0);
 	cufftComplex *d_grid;
 	
 	// Array for grid
@@ -863,22 +729,11 @@ void EXPORT unconditionalSimInit_2f(float *p_xmin, float *p_xmax, int *p_nx, flo
 	// copy grid to GPU
 	cudaStatus = cudaMemcpy(d_grid,h_grid_c, uncond_global_2f.n*uncond_global_2f.m*sizeof(cufftComplex),cudaMemcpyHostToDevice);
 	
-	switch(*p_covmodel) {
-	case EXP:
-		sampleCovExpKernel_2f<<<uncond_global_2f.blockCount2d, uncond_global_2f.blockSize2d>>>(d_trick_grid_c, d_grid, uncond_global_2f.d_cov, xc, yc, sill, range,nugget,uncond_global_2f.n,uncond_global_2f.m);
-		break;
-	case GAU:
-		sampleCovGauKernel_2f<<<uncond_global_2f.blockCount2d, uncond_global_2f.blockSize2d>>>(d_trick_grid_c, d_grid, uncond_global_2f.d_cov, xc, yc, sill, range,nugget,uncond_global_2f.n,uncond_global_2f.m);
-		break;
-	case SPH:
-		sampleCovSphKernel_2f<<<uncond_global_2f.blockCount2d, uncond_global_2f.blockSize2d>>>(d_trick_grid_c, d_grid, uncond_global_2f.d_cov, xc, yc, sill, range,nugget,uncond_global_2f.n,uncond_global_2f.m);
-		break;
-	case MAT3:
-		sampleCovMat3Kernel_2f<<<uncond_global_2f.blockCount2d, uncond_global_2f.blockSize2d>>>(d_trick_grid_c, d_grid, uncond_global_2f.d_cov, xc, yc, sill, range,nugget,uncond_global_2f.n,uncond_global_2f.m);
-	break;
-	case MAT5:
-		sampleCovMat5Kernel_2f<<<uncond_global_2f.blockCount2d, uncond_global_2f.blockSize2d>>>(d_trick_grid_c, d_grid, uncond_global_2f.d_cov, xc, yc, sill, range,nugget,uncond_global_2f.n,uncond_global_2f.m);
-	break;
+	if (isotropic) {
+		sampleCovKernel_2f<<<uncond_global_2f.blockCount2d, uncond_global_2f.blockSize2d>>>(d_trick_grid_c, d_grid, uncond_global_2f.d_cov, xc, yc,*p_covmodel, sill, range,nugget,uncond_global_2f.n,uncond_global_2f.m);
+	}
+	else {	
+		sampleCovAnisKernel_2f<<<uncond_global_2f.blockCount2d, uncond_global_2f.blockSize2d>>>(d_trick_grid_c, d_grid, uncond_global_2f.d_cov, xc, yc, *p_covmodel, sill, range,nugget, alpha, afac1, uncond_global_2f.n,uncond_global_2f.m);	
 	}
 	free(h_grid_c);
 	cudaFree(d_grid);
@@ -950,9 +805,9 @@ void EXPORT unconditionalSimInit_2f(float *p_xmin, float *p_xmax, int *p_nx, flo
 
 
 	// Devide spectral covariance grid by "trick" grid
-	divideSpectrumKernel_f<<<uncond_global_2f.blockCount1d, uncond_global_2f.blockSize1d>>>(uncond_global_2f.d_cov, d_trick_grid_c);	
+	divideSpectrumKernel_2f<<<uncond_global_2f.blockCount1d, uncond_global_2f.blockSize1d>>>(uncond_global_2f.d_cov, d_trick_grid_c);	
 	cudaStatus = cudaThreadSynchronize();
-	if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching divideSpectrumKernel_f!\n", cudaStatus);	
+	if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching divideSpectrumKernel_2f!\n", cudaStatus);	
 	cudaFree(d_trick_grid_c);
 	
 //#ifdef DEBUG 
@@ -976,6 +831,7 @@ void EXPORT unconditionalSimInit_2f(float *p_xmin, float *p_xmax, int *p_nx, flo
 				*ret_code = ERROR_NEGATIVE_COV_VALUES; 
 				free(h_cov);
 				cudaFree(uncond_global_2f.d_cov);
+				cufftDestroy(uncond_global_2f.plan1);
 				return;
 			}	
 		}
@@ -983,9 +839,9 @@ void EXPORT unconditionalSimInit_2f(float *p_xmin, float *p_xmax, int *p_nx, flo
 	}
 
 	// Compute sqrt of cov grid
-	sqrtKernel_f<<<uncond_global_2f.blockCount1d, uncond_global_2f.blockSize1d>>>(uncond_global_2f.d_cov);
+	sqrtKernel_2f<<<uncond_global_2f.blockCount1d, uncond_global_2f.blockSize1d>>>(uncond_global_2f.d_cov);
 	cudaStatus = cudaThreadSynchronize();
-	if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching sqrtKernel_f\n", cudaStatus);
+	if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching sqrtKernel_2f\n", cudaStatus);
 
 }
 
@@ -1023,18 +879,18 @@ void EXPORT unconditionalSimRealizations_2f(float *p_out,  int *p_k, int *ret_co
 			if (cudaStatus != cudaSuccess)  printf("cudaMalloc returned error code %d\n", cudaStatus);
 		}
 		// Convert real random numbers to complex numbers
-		realToComplexKernel_f<<< uncond_global_2f.blockCount1d, uncond_global_2f.blockSize1d>>>(d_fftrand, d_rand, uncond_global_2f.n*uncond_global_2f.m);
+		realToComplexKernel_2f<<< uncond_global_2f.blockCount1d, uncond_global_2f.blockSize1d>>>(d_fftrand, d_rand, uncond_global_2f.n*uncond_global_2f.m);
 		cudaStatus = cudaThreadSynchronize();
-		if (cudaStatus != cudaSuccess) printf("cudaThreadSynchronize returned error code %d after launching realToComplexKernel_f!\n", cudaStatus);	
+		if (cudaStatus != cudaSuccess) printf("cudaThreadSynchronize returned error code %d after launching realToComplexKernel_2f!\n", cudaStatus);	
 
 		// Compute 2D FFT of random numbers
 		cufftExecC2C(uncond_global_2f.plan1, d_fftrand, d_fftrand, CUFFT_FORWARD); // in place fft forward
 		
 
 		if(l==0) cudaMalloc((void**)&d_amp,sizeof(cufftComplex)*uncond_global_2f.n*uncond_global_2f.m);
-		elementProduct_f<<<uncond_global_2f.blockCount1d, uncond_global_2f.blockSize1d>>>(d_amp, uncond_global_2f.d_cov, d_fftrand, uncond_global_2f.m*uncond_global_2f.n);  
+		elementProduct_2f<<<uncond_global_2f.blockCount1d, uncond_global_2f.blockSize1d>>>(d_amp, uncond_global_2f.d_cov, d_fftrand, uncond_global_2f.m*uncond_global_2f.n);  
 		cudaStatus = cudaThreadSynchronize();
-		if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching elementProduct_f!\n", cudaStatus);
+		if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching elementProduct_2f!\n", cudaStatus);
 		
 		cufftExecC2C(uncond_global_2f.plan1, d_amp, d_amp, CUFFT_INVERSE); // in place fft inverse for simulation
 		
@@ -1086,6 +942,8 @@ struct cond_state_2f {
 	int nx,ny,n,m;
 	float xmin,xmax,ymin,ymax,dx,dy;
 	float range, sill, nugget;
+	float alpha, afac1;
+	bool isotropic;
 	int blockSize,numBlocks;
 	dim3 blockSize2, numBlocks2;
 	cufftHandle plan1;
@@ -1128,7 +986,9 @@ extern "C" {
 
 
 
-void EXPORT conditionalSimInit_2f(float *p_xmin, float *p_xmax, int *p_nx, float *p_ymin, float *p_ymax, int *p_ny, float *p_sill, float *p_range, float *p_nugget, float *p_srcXY, float *p_srcData, int *p_numSrc, int *p_covmodel, int *do_check, int *krige_method, float *mu, int *ret_code) {
+void EXPORT conditionalSimInit_2f(float *p_xmin, float *p_xmax, int *p_nx, float *p_ymin, float *p_ymax, int *p_ny, float *p_sill, 
+								  float *p_range, float *p_nugget, float *p_srcXY, float *p_srcData, int *p_numSrc, int *p_covmodel, 
+								  float *p_anis_direction, float *p_anis_ratio, int *do_check, int *krige_method, float *mu, int *ret_code) {
 	*ret_code = OK;
 	cudaError_t cudaStatus;
 	cublasInit();
@@ -1152,6 +1012,10 @@ void EXPORT conditionalSimInit_2f(float *p_xmin, float *p_xmax, int *p_nx, float
 	if (cond_global_2f.krige_method == SIMPLE)
 		cond_global_2f.mu = *mu;
 	else cond_global_2f.mu = 0;
+
+	cond_global_2f.isotropic = (*p_anis_ratio == 1.0);
+	cond_global_2f.afac1 = 1.0/(*p_anis_ratio);
+	cond_global_2f.alpha = (90.0 - *p_anis_direction) * (PI / 180.0);
 
 	// 1d cuda grid
 	cond_global_2f.blockSize1d = dim3(256);
@@ -1180,7 +1044,8 @@ void EXPORT conditionalSimInit_2f(float *p_xmin, float *p_xmax, int *p_nx, float
 	for (int i=0; i<cond_global_2f.n; ++i) { // i = col index
 		for (int j=0; j<cond_global_2f.m; ++j) { // j = row index
 			h_grid_c[j*cond_global_2f.n+i].x = *p_xmin + (i+1) * cond_global_2f.dx; 
-			h_grid_c[j*cond_global_2f.n+i].y = *p_ymin + (j+1) * cond_global_2f.dy; 
+			//h_grid_c[j*cond_global_2f.n+i].y = *p_ymin + (j+1) * cond_global_2f.dy; 
+			h_grid_c[j*cond_global_2f.n+i].y = *p_ymin + (cond_global_2f.m-1-j)* cond_global_2f.dy;
 		}
 	}
 
@@ -1200,22 +1065,12 @@ void EXPORT conditionalSimInit_2f(float *p_xmin, float *p_xmax, int *p_nx, float
 	// Copy grid to gpu
 	cudaStatus = cudaMemcpy(d_grid,h_grid_c, cond_global_2f.n*cond_global_2f.m*sizeof(cufftComplex),cudaMemcpyHostToDevice);
 	
-	switch(cond_global_2f.covmodel) {
-	case EXP:
-		sampleCovExpKernel_2f<<<cond_global_2f.blockCount2d, cond_global_2f.blockSize2d>>>(d_trick_grid_c, d_grid, cond_global_2f.d_cov, xc, yc, cond_global_2f.sill, cond_global_2f.range, cond_global_2f.nugget, cond_global_2f.n,cond_global_2f.m);
-		break;
-	case GAU:
-		sampleCovGauKernel_2f<<<cond_global_2f.blockCount2d, cond_global_2f.blockSize2d>>>(d_trick_grid_c, d_grid, cond_global_2f.d_cov, xc, yc, cond_global_2f.sill, cond_global_2f.range, cond_global_2f.nugget, cond_global_2f.n,cond_global_2f.m);
-		break;
-	case SPH:
-		sampleCovSphKernel_2f<<<cond_global_2f.blockCount2d, cond_global_2f.blockSize2d>>>(d_trick_grid_c, d_grid, cond_global_2f.d_cov, xc, yc, cond_global_2f.sill, cond_global_2f.range, cond_global_2f.nugget, cond_global_2f.n,cond_global_2f.m);
-		break;
-	case MAT3:
-		sampleCovMat3Kernel_2f<<<cond_global_2f.blockCount2d, cond_global_2f.blockSize2d>>>(d_trick_grid_c, d_grid, cond_global_2f.d_cov, xc, yc, cond_global_2f.sill, cond_global_2f.range, cond_global_2f.nugget, cond_global_2f.n,cond_global_2f.m);
-		break;
-	case MAT5:
-		sampleCovMat5Kernel_2f<<<cond_global_2f.blockCount2d, cond_global_2f.blockSize2d>>>(d_trick_grid_c, d_grid, cond_global_2f.d_cov, xc, yc, cond_global_2f.sill, cond_global_2f.range, cond_global_2f.nugget, cond_global_2f.n,cond_global_2f.m);
-		break;
+
+	if (cond_global_2f.isotropic) {
+		sampleCovKernel_2f<<<cond_global_2f.blockCount2d, cond_global_2f.blockSize2d>>>(d_trick_grid_c, d_grid, cond_global_2f.d_cov, xc, yc, cond_global_2f.covmodel, cond_global_2f.sill, cond_global_2f.range, cond_global_2f.nugget, cond_global_2f.n,cond_global_2f.m);
+	}
+	else {
+		sampleCovAnisKernel_2f<<<cond_global_2f.blockCount2d, cond_global_2f.blockSize2d>>>(d_trick_grid_c, d_grid, cond_global_2f.d_cov, xc, yc, cond_global_2f.covmodel, cond_global_2f.sill, cond_global_2f.range, cond_global_2f.nugget,cond_global_2f.alpha,cond_global_2f.afac1, cond_global_2f.n,cond_global_2f.m);
 	}
 
 	free(h_grid_c);
@@ -1232,9 +1087,9 @@ void EXPORT conditionalSimInit_2f(float *p_xmin, float *p_xmax, int *p_nx, float
 	if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching multKernel_2f!\n", cudaStatus);	
 
 	// Devide spectral cov grid by fft of "trick" grid
-	divideSpectrumKernel_f<<<cond_global_2f.blockCount1d, cond_global_2f.blockSize1d>>>(cond_global_2f.d_cov, d_trick_grid_c);	
+	divideSpectrumKernel_2f<<<cond_global_2f.blockCount1d, cond_global_2f.blockSize1d>>>(cond_global_2f.d_cov, d_trick_grid_c);	
 	cudaStatus = cudaThreadSynchronize();
-	if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching divideSpectrumKernel_f!\n", cudaStatus);	
+	if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching divideSpectrumKernel_2f!\n", cudaStatus);	
 	cudaFree(d_trick_grid_c);
 
 	// Copy to host and check for negative real parts
@@ -1246,6 +1101,7 @@ void EXPORT conditionalSimInit_2f(float *p_xmin, float *p_xmax, int *p_nx, float
 				*ret_code = ERROR_NEGATIVE_COV_VALUES; 
 				free(h_cov);
 				cudaFree(cond_global_2f.d_cov);
+				cufftDestroy(cond_global_2f.plan1);
 				return;
 			}	
 		}
@@ -1253,9 +1109,9 @@ void EXPORT conditionalSimInit_2f(float *p_xmin, float *p_xmax, int *p_nx, float
 	}
 
 	// Compute sqrt of spectral cov grid
-	sqrtKernel_f<<<cond_global_2f.blockCount1d, cond_global_2f.blockSize1d>>>(cond_global_2f.d_cov);
+	sqrtKernel_2f<<<cond_global_2f.blockCount1d, cond_global_2f.blockSize1d>>>(cond_global_2f.d_cov);
 	cudaStatus = cudaThreadSynchronize();
-	if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching sqrtKernel_f\n", cudaStatus);
+	if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching sqrtKernel_2f\n", cudaStatus);
 
 	// Copy samples to gpu
 	cudaStatus = cudaMalloc((void**)&cond_global_2f.d_samplexy,sizeof(float2)* cond_global_2f.numSrc); 
@@ -1323,16 +1179,16 @@ void EXPORT conditionalSimUncondResiduals_2f(float *p_out, int *p_k, int *ret_co
 			
 		
 		curandGenerateNormal(curandGen,d_rand,cond_global_2f.m*cond_global_2f.n,0.0,1.0);	
-		realToComplexKernel_f<<< cond_global_2f.blockCount1d, cond_global_2f.blockSize1d>>>(d_fftrand, d_rand, cond_global_2f.n*cond_global_2f.m);
+		realToComplexKernel_2f<<< cond_global_2f.blockCount1d, cond_global_2f.blockSize1d>>>(d_fftrand, d_rand, cond_global_2f.n*cond_global_2f.m);
 		cudaStatus = cudaThreadSynchronize();
-		if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching realToComplexKernel_f!\n", cudaStatus);	
+		if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching realToComplexKernel_2f!\n", cudaStatus);	
 		cufftExecC2C(cond_global_2f.plan1, d_fftrand, d_fftrand, CUFFT_FORWARD); // in place fft forward
 		cudaStatus = cudaThreadSynchronize();
 		
-		elementProduct_f<<<cond_global_2f.blockCount1d, cond_global_2f.blockSize1d>>>(d_amp, cond_global_2f.d_cov, d_fftrand, cond_global_2f.m*cond_global_2f.n);
+		elementProduct_2f<<<cond_global_2f.blockCount1d, cond_global_2f.blockSize1d>>>(d_amp, cond_global_2f.d_cov, d_fftrand, cond_global_2f.m*cond_global_2f.n);
     
 		cudaStatus = cudaThreadSynchronize();
-		if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching elementProduct_f!\n", cudaStatus);
+		if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching elementProduct_2f!\n", cudaStatus);
 
 		cufftExecC2C(cond_global_2f.plan1, d_amp, d_amp, CUFFT_INVERSE); // in place fft inverse for simulation
 	  
@@ -1399,31 +1255,17 @@ void EXPORT conditionalSimKrigeResiduals_2f(float *p_out, float *p_y, int *ret_c
 		cudaMemcpy(d_y, p_y + l*(cond_global_2f.numSrc + 1), sizeof(float) * (cond_global_2f.numSrc + 1),cudaMemcpyHostToDevice);		
 		
 		// Kriging prediction
-		
 
-		switch(cond_global_2f.covmodel) {
-		case EXP:
-			krigingExpKernel_2f<<<blockCntKrige, blockSizeKrige>>>(d_respred,cond_global_2f.d_samplexy,cond_global_2f.xmin,cond_global_2f.dx,cond_global_2f.ymin,cond_global_2f.dy,d_y,cond_global_2f.range,cond_global_2f.sill,cond_global_2f.nugget,cond_global_2f.numSrc,cond_global_2f.nx,cond_global_2f.ny);
-			break;
-		case GAU:
-			krigingGauKernel_2f<<<blockCntKrige, blockSizeKrige>>>(d_respred,cond_global_2f.d_samplexy,cond_global_2f.xmin,cond_global_2f.dx,cond_global_2f.ymin,cond_global_2f.dy,d_y,cond_global_2f.range,cond_global_2f.sill,cond_global_2f.nugget,cond_global_2f.numSrc,cond_global_2f.nx,cond_global_2f.ny);
-			break;
-		case SPH:
-			krigingSphKernel_2f<<<blockCntKrige, blockSizeKrige>>>(d_respred,cond_global_2f.d_samplexy,cond_global_2f.xmin,cond_global_2f.dx,cond_global_2f.ymin,cond_global_2f.dy,d_y,cond_global_2f.range,cond_global_2f.sill,cond_global_2f.nugget,cond_global_2f.numSrc,cond_global_2f.nx,cond_global_2f.ny);
-			break;
-		case MAT3:
-			krigingMat3Kernel_2f<<<blockCntKrige, blockSizeKrige>>>(d_respred,cond_global_2f.d_samplexy,cond_global_2f.xmin,cond_global_2f.dx,cond_global_2f.ymin,cond_global_2f.dy,d_y,cond_global_2f.range,cond_global_2f.sill,cond_global_2f.nugget,cond_global_2f.numSrc,cond_global_2f.nx,cond_global_2f.ny);
-			break;
-		case MAT5:
-			krigingMat5Kernel_2f<<<blockCntKrige, blockSizeKrige>>>(d_respred,cond_global_2f.d_samplexy,cond_global_2f.xmin,cond_global_2f.dx,cond_global_2f.ymin,cond_global_2f.dy,d_y,cond_global_2f.range,cond_global_2f.sill,cond_global_2f.nugget,cond_global_2f.numSrc,cond_global_2f.nx,cond_global_2f.ny);
-			break;
-		}
+		if (cond_global_2f.isotropic)
+			krigingKernel_2f<<<blockCntKrige, blockSizeKrige>>>(d_respred,cond_global_2f.d_samplexy,cond_global_2f.xmin,cond_global_2f.dx,cond_global_2f.ymin,cond_global_2f.dy,d_y,cond_global_2f.covmodel,cond_global_2f.range,cond_global_2f.sill,cond_global_2f.nugget,cond_global_2f.numSrc,cond_global_2f.nx,cond_global_2f.ny);
+		else 	
+			krigingAnisKernel_2f<<<blockCntKrige, blockSizeKrige>>>(d_respred,cond_global_2f.d_samplexy,cond_global_2f.xmin,cond_global_2f.dx,cond_global_2f.ymin,cond_global_2f.dy,d_y,cond_global_2f.covmodel,cond_global_2f.range,cond_global_2f.sill,cond_global_2f.nugget,cond_global_2f.alpha,cond_global_2f.afac1,cond_global_2f.numSrc,cond_global_2f.nx,cond_global_2f.ny);
 
 		if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching krigingExpKernel_2f!\n", cudaStatus);
 		
 		// Add result to unconditional realization
-		addResSim_f<<<blockCntCond,blockSizeCond>>>(d_respred, cond_global_2f.d_uncond + l*cond_global_2f.nx*cond_global_2f.ny, cond_global_2f.nx*cond_global_2f.ny);
-		if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching addResSim_f!\n", cudaStatus);
+		addResSim_2f<<<blockCntCond,blockSizeCond>>>(d_respred, cond_global_2f.d_uncond + l*cond_global_2f.nx*cond_global_2f.ny, cond_global_2f.nx*cond_global_2f.ny);
+		if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching addResSim_2f!\n", cudaStatus);
 		
 		// Write Result to R
 		cudaMemcpy((p_out + l*(cond_global_2f.nx*cond_global_2f.ny)),d_respred,sizeof(float)*cond_global_2f.nx*cond_global_2f.ny,cudaMemcpyDeviceToHost);		
@@ -1459,29 +1301,17 @@ void EXPORT conditionalSimSimpleKrigeResiduals_2f(float *p_out, float *p_y, int 
 		
 		cudaMemcpy(d_y, p_y + l*cond_global_2f.numSrc, sizeof(float) * cond_global_2f.numSrc,cudaMemcpyHostToDevice);	// not + 1, no lagrange multiplicator in simple kriging		
 		// Kriging prediction
-		switch(cond_global_2f.covmodel) {
-		case EXP:
-			krigingSimpleExpKernel_2f<<<blockCntKrige, blockSizeKrige>>>(d_respred,cond_global_2f.d_samplexy,cond_global_2f.xmin,cond_global_2f.dx,cond_global_2f.ymin,cond_global_2f.dy,d_y,cond_global_2f.range,cond_global_2f.sill,cond_global_2f.nugget,cond_global_2f.numSrc,cond_global_2f.nx,cond_global_2f.ny,cond_global_2f.mu);
-			break;
-		case GAU:
-			krigingSimpleGauKernel_2f<<<blockCntKrige, blockSizeKrige>>>(d_respred,cond_global_2f.d_samplexy,cond_global_2f.xmin,cond_global_2f.dx,cond_global_2f.ymin,cond_global_2f.dy,d_y,cond_global_2f.range,cond_global_2f.sill,cond_global_2f.nugget,cond_global_2f.numSrc,cond_global_2f.nx,cond_global_2f.ny,cond_global_2f.mu);
-			break;
-		case SPH:
-			krigingSimpleSphKernel_2f<<<blockCntKrige, blockSizeKrige>>>(d_respred,cond_global_2f.d_samplexy,cond_global_2f.xmin,cond_global_2f.dx,cond_global_2f.ymin,cond_global_2f.dy,d_y,cond_global_2f.range,cond_global_2f.sill,cond_global_2f.nugget,cond_global_2f.numSrc,cond_global_2f.nx,cond_global_2f.ny,cond_global_2f.mu);
-			break;
-		case MAT3:
-			krigingSimpleMat5Kernel_2f<<<blockCntKrige, blockSizeKrige>>>(d_respred,cond_global_2f.d_samplexy,cond_global_2f.xmin,cond_global_2f.dx,cond_global_2f.ymin,cond_global_2f.dy,d_y,cond_global_2f.range,cond_global_2f.sill,cond_global_2f.nugget,cond_global_2f.numSrc,cond_global_2f.nx,cond_global_2f.ny,cond_global_2f.mu);
-			break;
-		case MAT5:
-			krigingSimpleMat5Kernel_2f<<<blockCntKrige, blockSizeKrige>>>(d_respred,cond_global_2f.d_samplexy,cond_global_2f.xmin,cond_global_2f.dx,cond_global_2f.ymin,cond_global_2f.dy,d_y,cond_global_2f.range,cond_global_2f.sill,cond_global_2f.nugget,cond_global_2f.numSrc,cond_global_2f.nx,cond_global_2f.ny,cond_global_2f.mu);
-			break;
-		}
+
+		if (cond_global_2f.isotropic)
+			krigingSimpleKernel_2f<<<blockCntKrige, blockSizeKrige>>>(d_respred,cond_global_2f.d_samplexy,cond_global_2f.xmin,cond_global_2f.dx,cond_global_2f.ymin,cond_global_2f.dy,d_y,cond_global_2f.covmodel,cond_global_2f.range,cond_global_2f.sill,cond_global_2f.nugget,cond_global_2f.numSrc,cond_global_2f.nx,cond_global_2f.ny,cond_global_2f.mu);			
+		else 	
+			krigingSimpleAnisKernel_2f<<<blockCntKrige, blockSizeKrige>>>(d_respred,cond_global_2f.d_samplexy,cond_global_2f.xmin,cond_global_2f.dx,cond_global_2f.ymin,cond_global_2f.dy,d_y,cond_global_2f.covmodel,cond_global_2f.range,cond_global_2f.sill,cond_global_2f.nugget,cond_global_2f.alpha , cond_global_2f.afac1 ,cond_global_2f.numSrc,cond_global_2f.nx,cond_global_2f.ny,cond_global_2f.mu);			
 
 		if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching krigingExpKernel_2f!\n", cudaStatus);
 		
 		// Add result to unconditional realization
-		addResSim_f<<<blockCntCond,blockSizeCond>>>(d_respred, cond_global_2f.d_uncond + l*cond_global_2f.nx*cond_global_2f.ny, cond_global_2f.nx*cond_global_2f.ny);
-		if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching addResSim_f!\n", cudaStatus);
+		addResSim_2f<<<blockCntCond,blockSizeCond>>>(d_respred, cond_global_2f.d_uncond + l*cond_global_2f.nx*cond_global_2f.ny, cond_global_2f.nx*cond_global_2f.ny);
+		if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching addResSim_2f!\n", cudaStatus);
 		
 		// Write Result to R
 		cudaMemcpy((p_out + l*(cond_global_2f.nx*cond_global_2f.ny)),d_respred,sizeof(float)*cond_global_2f.nx*cond_global_2f.ny,cudaMemcpyDeviceToHost);		
@@ -1530,6 +1360,8 @@ struct conditioning_state_2f {
 	int nx,ny,n,m,k;
 	float xmin,xmax,ymin,ymax,dx,dy;
 	float range, sill, nugget;
+	bool isotropic;
+	float alpha,afac1;
 	int blockSize,numBlocks;
 	dim3 blockSize2, numBlocks2;
 	dim3 blockSize2d;
@@ -1557,7 +1389,10 @@ extern "C" {
 #endif
 
 
-	void EXPORT conditioningInit_2f(float *p_xmin, float *p_xmax, int *p_nx, float *p_ymin, float *p_ymax, int *p_ny, float *p_sill, float *p_range, float *p_nugget, float *p_srcXY, float *p_srcData, int *p_numSrc,  int *p_k, float *p_uncond, int *p_covmodel, int *krige_method, float *mu, int *ret_code) {
+	void EXPORT conditioningInit_2f(float *p_xmin, float *p_xmax, int *p_nx, float *p_ymin, float *p_ymax, int *p_ny, float *p_sill, 
+									float *p_range, float *p_nugget, float *p_srcXY, float *p_srcData, int *p_numSrc,  int *p_k, 
+									float *p_uncond, int *p_covmodel, float *p_anis_direction, float *p_anis_ratio,int *krige_method, 
+									float *mu, int *ret_code) {
 		*ret_code = OK;
 		cudaError_t cudaStatus;
 		cublasInit();
@@ -1583,6 +1418,9 @@ extern "C" {
 			conditioning_global_2f.mu = *mu;
 		else conditioning_global_2f.mu = 0;
 
+		conditioning_global_2f.isotropic = (*p_anis_ratio == 1.0);
+		conditioning_global_2f.afac1 = 1/(*p_anis_ratio);
+		conditioning_global_2f.alpha = (90.0 - *p_anis_direction) * (PI / 180.0);
 
 		// 1d cuda grid
 		conditioning_global_2f.blockSize1d = dim3(256);
@@ -1691,28 +1529,17 @@ extern "C" {
 		for(int l = 0; l<cond_global_2f.k; ++l) {
 			cudaMemcpy(d_y, p_y + l*(conditioning_global_2f.numSrc + 1), sizeof(float) * (conditioning_global_2f.numSrc + 1),cudaMemcpyHostToDevice);		
 					
-			switch(conditioning_global_2f.covmodel) {
-			case EXP:
-				krigingExpKernel_2f<<<blockCntKrige, blockSizeKrige>>>(d_respred,conditioning_global_2f.d_samplexy,conditioning_global_2f.xmin,conditioning_global_2f.dx,conditioning_global_2f.ymin,conditioning_global_2f.dy,d_y,conditioning_global_2f.range,conditioning_global_2f.sill,conditioning_global_2f.nugget,conditioning_global_2f.numSrc,conditioning_global_2f.nx,conditioning_global_2f.ny);
-				break;
-			case GAU:
-				krigingGauKernel_2f<<<blockCntKrige, blockSizeKrige>>>(d_respred,conditioning_global_2f.d_samplexy,conditioning_global_2f.xmin,conditioning_global_2f.dx,conditioning_global_2f.ymin,conditioning_global_2f.dy,d_y,conditioning_global_2f.range,conditioning_global_2f.sill,conditioning_global_2f.nugget,conditioning_global_2f.numSrc,conditioning_global_2f.nx,conditioning_global_2f.ny);
-				break;
-			case SPH:
-				krigingSphKernel_2f<<<blockCntKrige, blockSizeKrige>>>(d_respred,conditioning_global_2f.d_samplexy,conditioning_global_2f.xmin,conditioning_global_2f.dx,conditioning_global_2f.ymin,conditioning_global_2f.dy,d_y,conditioning_global_2f.range,conditioning_global_2f.sill,conditioning_global_2f.nugget,conditioning_global_2f.numSrc,conditioning_global_2f.nx,conditioning_global_2f.ny);
-				break;
-			case MAT3:
-				krigingMat3Kernel_2f<<<blockCntKrige, blockSizeKrige>>>(d_respred,conditioning_global_2f.d_samplexy,conditioning_global_2f.xmin,conditioning_global_2f.dx,conditioning_global_2f.ymin,conditioning_global_2f.dy,d_y,conditioning_global_2f.range,conditioning_global_2f.sill,conditioning_global_2f.nugget,conditioning_global_2f.numSrc,conditioning_global_2f.nx,conditioning_global_2f.ny);
-				break;
-			case MAT5:
-				krigingMat5Kernel_2f<<<blockCntKrige, blockSizeKrige>>>(d_respred,conditioning_global_2f.d_samplexy,conditioning_global_2f.xmin,conditioning_global_2f.dx,conditioning_global_2f.ymin,conditioning_global_2f.dy,d_y,conditioning_global_2f.range,conditioning_global_2f.sill,conditioning_global_2f.nugget,conditioning_global_2f.numSrc,conditioning_global_2f.nx,conditioning_global_2f.ny);
-				break;
+			if (conditioning_global_2f.isotropic) {
+				krigingKernel_2f<<<blockCntKrige, blockSizeKrige>>>(d_respred,conditioning_global_2f.d_samplexy,conditioning_global_2f.xmin,conditioning_global_2f.dx,conditioning_global_2f.ymin,conditioning_global_2f.dy,d_y,conditioning_global_2f.covmodel,conditioning_global_2f.range,conditioning_global_2f.sill,conditioning_global_2f.nugget,conditioning_global_2f.numSrc,conditioning_global_2f.nx,conditioning_global_2f.ny);			
+			}
+			else {
+				krigingAnisKernel_2f<<<blockCntKrige, blockSizeKrige>>>(d_respred,conditioning_global_2f.d_samplexy,conditioning_global_2f.xmin,conditioning_global_2f.dx,conditioning_global_2f.ymin,conditioning_global_2f.dy,d_y,conditioning_global_2f.covmodel,conditioning_global_2f.range,conditioning_global_2f.sill,conditioning_global_2f.nugget,conditioning_global_2f.alpha,conditioning_global_2f.afac1,conditioning_global_2f.numSrc,conditioning_global_2f.nx,conditioning_global_2f.ny);			
 			}
 			if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching krigingExpKernel_2f!\n", cudaStatus);
 		
 			// Add result to unconditional realization	
-			addResSim_f<<<blockCntCond,blockSizeCond>>>(d_respred, &conditioning_global_2f.d_uncond[l*conditioning_global_2f.nx*conditioning_global_2f.ny], conditioning_global_2f.nx*conditioning_global_2f.ny);
-			if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching addResSim_f!\n", cudaStatus);
+			addResSim_2f<<<blockCntCond,blockSizeCond>>>(d_respred, &conditioning_global_2f.d_uncond[l*conditioning_global_2f.nx*conditioning_global_2f.ny], conditioning_global_2f.nx*conditioning_global_2f.ny);
+			if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching addResSim_2f!\n", cudaStatus);
 		
 			// Write result to R
 			cudaMemcpy((p_out + l*(conditioning_global_2f.nx*conditioning_global_2f.ny)),d_respred,sizeof(float)*conditioning_global_2f.nx*conditioning_global_2f.ny,cudaMemcpyDeviceToHost);		
@@ -1746,29 +1573,18 @@ extern "C" {
 
 		for(int l = 0; l<cond_global_2f.k; ++l) {
 			cudaMemcpy(d_y, p_y + l*conditioning_global_2f.numSrc, sizeof(float) * conditioning_global_2f.numSrc,cudaMemcpyHostToDevice);		
-					
-			switch(conditioning_global_2f.covmodel) {
-			case EXP:
-				krigingSimpleExpKernel_2f<<<blockCntKrige, blockSizeKrige>>>(d_respred,conditioning_global_2f.d_samplexy,conditioning_global_2f.xmin,conditioning_global_2f.dx,conditioning_global_2f.ymin,conditioning_global_2f.dy,d_y,conditioning_global_2f.range,conditioning_global_2f.sill,conditioning_global_2f.nugget,conditioning_global_2f.numSrc,conditioning_global_2f.nx,conditioning_global_2f.ny,conditioning_global_2f.mu);
-				break;
-			case GAU:
-				krigingSimpleGauKernel_2f<<<blockCntKrige, blockSizeKrige>>>(d_respred,conditioning_global_2f.d_samplexy,conditioning_global_2f.xmin,conditioning_global_2f.dx,conditioning_global_2f.ymin,conditioning_global_2f.dy,d_y,conditioning_global_2f.range,conditioning_global_2f.sill,conditioning_global_2f.nugget,conditioning_global_2f.numSrc,conditioning_global_2f.nx,conditioning_global_2f.ny,conditioning_global_2f.mu);
-				break;
-			case SPH:
-				krigingSimpleSphKernel_2f<<<blockCntKrige, blockSizeKrige>>>(d_respred,conditioning_global_2f.d_samplexy,conditioning_global_2f.xmin,conditioning_global_2f.dx,conditioning_global_2f.ymin,conditioning_global_2f.dy,d_y,conditioning_global_2f.range,conditioning_global_2f.sill,conditioning_global_2f.nugget,conditioning_global_2f.numSrc,conditioning_global_2f.nx,conditioning_global_2f.ny,conditioning_global_2f.mu);
-				break;
-			case MAT3:
-				krigingSimpleMat3Kernel_2f<<<blockCntKrige, blockSizeKrige>>>(d_respred,conditioning_global_2f.d_samplexy,conditioning_global_2f.xmin,conditioning_global_2f.dx,conditioning_global_2f.ymin,conditioning_global_2f.dy,d_y,conditioning_global_2f.range,conditioning_global_2f.sill,conditioning_global_2f.nugget,conditioning_global_2f.numSrc,conditioning_global_2f.nx,conditioning_global_2f.ny,conditioning_global_2f.mu);
-				break;
-			case MAT5:
-				krigingSimpleMat5Kernel_2f<<<blockCntKrige, blockSizeKrige>>>(d_respred,conditioning_global_2f.d_samplexy,conditioning_global_2f.xmin,conditioning_global_2f.dx,conditioning_global_2f.ymin,conditioning_global_2f.dy,d_y,conditioning_global_2f.range,conditioning_global_2f.sill,conditioning_global_2f.nugget,conditioning_global_2f.numSrc,conditioning_global_2f.nx,conditioning_global_2f.ny,conditioning_global_2f.mu);
-				break;
+				
+			if (conditioning_global_2f.isotropic) {
+				krigingSimpleKernel_2f<<<blockCntKrige, blockSizeKrige>>>(d_respred,conditioning_global_2f.d_samplexy,conditioning_global_2f.xmin,conditioning_global_2f.dx,conditioning_global_2f.ymin,conditioning_global_2f.dy,d_y,conditioning_global_2f.covmodel,conditioning_global_2f.range,conditioning_global_2f.sill,conditioning_global_2f.nugget,conditioning_global_2f.numSrc,conditioning_global_2f.nx,conditioning_global_2f.ny,conditioning_global_2f.mu);
+			}
+			else {
+				krigingSimpleAnisKernel_2f<<<blockCntKrige, blockSizeKrige>>>(d_respred,conditioning_global_2f.d_samplexy,conditioning_global_2f.xmin,conditioning_global_2f.dx,conditioning_global_2f.ymin,conditioning_global_2f.dy,d_y,conditioning_global_2f.covmodel,conditioning_global_2f.range,conditioning_global_2f.sill,conditioning_global_2f.nugget,conditioning_global_2f.alpha,conditioning_global_2f.afac1,conditioning_global_2f.numSrc,conditioning_global_2f.nx,conditioning_global_2f.ny,conditioning_global_2f.mu);
 			}
 			if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching krigingExpKernel_2f!\n", cudaStatus);
 		
 			// Add result to unconditional realization	
-			addResSim_f<<<blockCntCond,blockSizeCond>>>(d_respred, &conditioning_global_2f.d_uncond[l*conditioning_global_2f.nx*conditioning_global_2f.ny], conditioning_global_2f.nx*conditioning_global_2f.ny);
-			if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching addResSim_f!\n", cudaStatus);
+			addResSim_2f<<<blockCntCond,blockSizeCond>>>(d_respred, &conditioning_global_2f.d_uncond[l*conditioning_global_2f.nx*conditioning_global_2f.ny], conditioning_global_2f.nx*conditioning_global_2f.ny);
+			if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching addResSim_2f!\n", cudaStatus);
 		
 			// Write result to R
 			cudaMemcpy((p_out + l*(conditioning_global_2f.nx*conditioning_global_2f.ny)),d_respred,sizeof(float)*conditioning_global_2f.nx*conditioning_global_2f.ny,cudaMemcpyDeviceToHost);		

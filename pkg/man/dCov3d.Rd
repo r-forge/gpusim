@@ -1,5 +1,5 @@
-\name{dCov2d}
-\alias{dCov2d}
+\name{dCov3d}
+\alias{dCov3d}
 \title{Computation of a covariance matrix from given 2d points}
 
 \description{
@@ -7,11 +7,11 @@ Computes the covariance matrix of two-dimensional points based on their pairwise
 }
 
 \usage{
-	dCov2d(data, model, sill, range, nugget, anis = c(0,0,0,1,1)) 
+	dCov3d(data, model, sill, range, nugget, anis = c(0,0,0,1,1)) 
 }
 
 \arguments{
-	\item{data}{a matrix with 2 columns representing x and y coordinates, each row corresponds to a point}
+	\item{data}{a matrix with 3 columns representing x, y, and z coordinates, each row corresponds to a point}
 	\item{model}{a string identifier for the covariance function to be used, currently \emph{Exp}, \emph{Gau} or  \emph{Sph}. See ?gpusim for more details.}
 	\item{range}{range parameter of the covariance function}
 	\item{sill}{sill parameter of the covariance function}
@@ -28,8 +28,9 @@ Computes the covariance matrix of two-dimensional points based on their pairwise
 library(gpusim)
 x = 1:5
 y = 1:5
-xy = as.matrix(expand.grid(x,y))
-dCov2d(xy,"Exp",1,2,0)
+z = 1:5
+xy = as.matrix(expand.grid(x,y,z))
+dCov3d(xy,"Exp",1,2,0)
 }
 
 \keyword{random fields}

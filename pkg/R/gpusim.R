@@ -9,15 +9,63 @@
 
 
 
-gpuSim <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method = 'O', mu = 0, as.sp = FALSE, check = FALSE, verify = FALSE, prec.double=FALSE) {
-	if (prec.double) {
-		return(.sim2d(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, as.sp, check, verify))
+gpuSim <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method = 'O', mu = 0, as.sp = FALSE, check = FALSE, verify = FALSE, prec.double=FALSE, anis=c(0,0,0,1,1)) {
+	
+	if (missing(grid)) {
+		stop("Error: Missing grid argument!")
 	}
-	else return(.sim2f(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, as.sp, check, verify))
+	
+	if (missing(covmodel) || missing(sill) || missing(range) || missing(nugget)) {
+		stop("Error: Missing one or more arguments for covariance function!")
+	}
+		
+	if (verify == TRUE && as.sp == FALSE) {
+		cat("Notice that verification forces as.sp = TRUE!\n")
+		as.sp = TRUE
+	}
+	
+	if (class(grid) != "GridTopology") {
+		if (class(grid) == "SpatialPixelsDataFrame" || class(grid) == "SpatialGridDataFrame") {
+			grid = grid@grid
+		}
+		else {
+			stop("Error: grid must be of type SpatialPixelsDataFrame, SpatialGridDataFrame, or GridTopology")
+		}
+	}
+	
+	# always use 5 pars to describe anisotropy
+	if (length(anis) == 2) {
+		anis = c(anis[1],0,0,anis[2],1)
+	}
+	if (length(anis) != 5) {
+		stop("Expected 5 or 2 anisotropy values!")
+	}
+	
+	dims = length(grid@cells.dim)
+	if (dims == 2) {
+		if (prec.double) {
+			return(.sim2d(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, as.sp, check, verify, anis))
+		}
+		else return(.sim2f(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, as.sp, check, verify, anis))
+	}
+	else if (dims == 3) {
+		if (prec.double) {
+			return(.sim3d(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, as.sp, check, verify, anis))
+		}
+		else stop("3d simulation in single precision currently not implemented, use prec.double = TRUE instead!")
+	}
+	else stop("Only two- or three-dimensional simulation supported!")
 }
 
 
+
+
+
+
+
 gpuSimEval <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method = 'O', mu = 0, as.sp = FALSE, check = FALSE, verify = FALSE, prec.double=FALSE) {
+	stop("Evaluation function currently not working but will be available soon")
+	
 	if (prec.double) {
 		return(.sim2dEval(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, as.sp, check, verify))
 	}
@@ -76,7 +124,7 @@ covMatern5 <- function(data, sill, range, nugget) {
 
 
 
-dCov2d <- function(data, model, sill, range, nugget) {
+dCov2d <- function(data, model, sill, range, nugget, anis=c(0,0,0,1,1)) {
 	if (class(data) != "matrix") {
 		stop("Expected a matrix as input!")
 	}
@@ -85,16 +133,35 @@ dCov2d <- function(data, model, sill, range, nugget) {
 		stop("Expected a matrix with exactly 2 columns!")
 	}
 	res = 0
-	if (model == "Exp") res = .C("dCovExp_2d", out=numeric(n*n), as.numeric(data), as.integer(n), as.numeric(sill), as.numeric(range), as.numeric(nugget), DUP=FALSE, PACKAGE="gpusim")
-	else if (model == "Gau") res = .C("dCovGau_2d", out=numeric(n*n), as.numeric(data), as.integer(n), as.numeric(sill), as.numeric(range), as.numeric(nugget), DUP=FALSE, PACKAGE="gpusim")	
-	else if (model == "Sph") res = .C("dCovSph_2d", out=numeric(n*n), as.numeric(data), as.integer(n), as.numeric(sill), as.numeric(range), as.numeric(nugget), DUP=FALSE, PACKAGE="gpusim")
-	else if (model == "Mat3") res = .C("dCovMat3_2d", out=numeric(n*n), as.numeric(data), as.integer(n), as.numeric(sill), as.numeric(range), as.numeric(nugget), DUP=FALSE, PACKAGE="gpusim")
-	else if (model == "Mat5") res = .C("dCovMat5_2d", out=numeric(n*n), as.numeric(data), as.integer(n), as.numeric(sill), as.numeric(range), as.numeric(nugget), DUP=FALSE, PACKAGE="gpusim")
-	else stop("Unknown covariance model!")	
+	if (anis[4] == 1) {
+		res = .C("dCov2d", out=numeric(n*n), as.numeric(data), as.integer(n), as.integer(.covID(model)), as.numeric(sill), as.numeric(range), as.numeric(nugget), DUP=FALSE, PACKAGE="gpusim")
+	}
+	else { #anisotropic
+		res = .C("dCovAnis2d", out=numeric(n*n), as.numeric(data), as.integer(n), as.integer(.covID(model)),as.numeric(sill), as.numeric(range), as.numeric(nugget), as.numeric(anis[1]), as.numeric(anis[4]), DUP=TRUE, PACKAGE="gpusim")		
+	}	
 	dim(res$out) = c(n,n)
 	return(res$out)
 }
 
+
+dCov3d <- function(data, model, sill, range, nugget, anis=c(0,0,0,1,1)) {
+	if (class(data) != "matrix") {
+		stop("Expected a matrix as input!")
+	}
+	n = nrow(data)
+	if (ncol(data) != 3) {
+		stop("Expected a matrix with exactly 3 columns!")
+	}
+	res = 0
+	if (anis[4] == 1 && anis[5] == 1) {
+		res = .C("dCov3d", out=numeric(n*n), as.numeric(data), as.integer(n), as.integer(.covID(model)), as.numeric(sill), as.numeric(range), as.numeric(nugget), DUP=FALSE, PACKAGE="gpusim")
+	}
+	else { #anisotropic
+		res = .C("dCovAnis3d", out=numeric(n*n), as.numeric(data), as.integer(n), as.integer(.covID(model)),as.numeric(sill), as.numeric(range), as.numeric(nugget), as.numeric(anis[1]), as.numeric(anis[2]), as.numeric(anis[3]), as.numeric(anis[4]), as.numeric(anis[5]), DUP=TRUE, PACKAGE="gpusim")		
+	}	
+	dim(res$out) = c(n,n)
+	return(res$out)
+}
 
 
 
@@ -119,7 +186,10 @@ vgmRange <- function(x) {
 	return(x[x$model != "Nug",]$range[1])
 }
 
-
+## Gets the 5 anisotropy values of the model
+vgmAnis <- function(x) {
+	return(c(x$ang1,x$ang2,x$ang3,x$anis1,x$anis2))
+}
 
 
 gpuBenchmark <- function(nx = 100, ny = 100, k = 100, range=2,sill=5,nugget=0) {

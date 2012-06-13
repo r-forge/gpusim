@@ -1,33 +1,11 @@
  
  
  
-.sim2f <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method = 'O', mu = 0, as.sp = FALSE, check = FALSE, verify = FALSE) {
+.sim2f <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method = 'O', mu = 0, as.sp = FALSE, check = FALSE, verify = FALSE, anis=c(0,0,0,1,1)) {
 	out = 0
- 
-	if (missing(grid)) {
-		stop("Error: Missing grid argument!")
-	}
-	
-	if (missing(covmodel) || missing(sill) || missing(range) || missing(nugget)) {
-		stop("Error: Missing one or more arguments for covariance function!")
-	}
-	
-	
-	if (verify == TRUE && as.sp == FALSE) {
-		cat("Notice that verification forces as.sp = TRUE!\n")
-		as.sp = TRUE
-	}
 	
 	if (!missing(uncond) && !missing(samples)) {
 		#only conditioning, k is ignored and derived from uncond object
-		if (class(grid) != "GridTopology") {
-			if (class(grid) == "SpatialPixelsDataFrame") {
-				grid = grid@grid
-			}
-			else {
-				stop("Error: grid must be of type SpatialPixelsDataFrame or GridTopology")
-			}
-		}
 		
 		if (class(samples) != "SpatialPointsDataFrame") {
 			stop("Error: samples must be of type SpatialPointsDataFrame")
@@ -70,7 +48,7 @@
 			stop("Error: samples contain more than one data field!")
 		}
 		srcData <- as.vector(samples@data[,1])	
-		cov.l <- dCov2d(coordinates(samples),covmodel,sill,range,nugget)
+		cov.l <- dCov2d(coordinates(samples),covmodel,sill,range,nugget,anis)
 	
 		# if ordinary kriging add lagrange condition
 		if (any(c('O','o') == kriging.method)) {
@@ -80,7 +58,7 @@
 		
 		res = 0
 		retcode = 0
-		result = .C("conditioningInit_2f", as.single(xmin), as.single(xmax), as.integer(nx), as.single(ymin),as.single(ymax), as.integer(ny), as.single(sill), as.single(range), as.single(nugget), as.single(srcXY), as.single(srcData), as.integer(numSrc),  as.integer(k), as.single(uncond), as.integer(.covID(covmodel)), as.integer(.gpuSimKrigeMethod(kriging.method)), as.single(mu), retcode = as.integer(retcode),PACKAGE="gpusim")
+		result = .C("conditioningInit_2f", as.single(xmin), as.single(xmax), as.integer(nx), as.single(ymin),as.single(ymax), as.integer(ny), as.single(sill), as.single(range), as.single(nugget), as.single(srcXY), as.single(srcData), as.integer(numSrc),  as.integer(k), as.single(uncond), as.integer(.covID(covmodel)), as.single(anis[1]), as.single(anis[4]), as.integer(.gpuSimKrigeMethod(kriging.method)), as.single(mu), retcode = as.integer(retcode),PACKAGE="gpusim")
 		if (result$retcode != 0) stop(paste("Initialization of conditioning returned error:",.gpuSimCatchError(result$retcode)))
 		
 		# if ordinary kriging add lagrange condition
@@ -115,21 +93,13 @@
 			dim(out) = c(nx,ny,k)
 		}
 		else {
-			out = SpatialPixelsDataFrame(coordinates(grid),as.data.frame(matrix(res$out,ncol = k,nrow = nx*ny)))	
+			out = SpatialGridDataFrame(grid,as.data.frame(matrix(res$out,ncol = k,nrow = nx*ny)))		
 			names(out@data) = paste("sim",1:k,sep="")
 		}
 			
 	}
 	else if (!missing(k) && !missing(samples)) {
 		#conditional simulation
-		if (class(grid) != "GridTopology") {
-			if (class(grid) == "SpatialPixelsDataFrame") {
-				grid = grid@grid
-			}
-			else {
-				stop("Error: grid must be of type SpatialPixelsDataFrame or GridTopology")
-			}
-		}
 	
 		if (class(samples) != "SpatialPointsDataFrame") {
 			stop("Error: samples must be of type SpatialPointsDataFrame")
@@ -162,7 +132,7 @@
 		srcData <- as.vector(samples@data[,1])
 		
 		# Get covariance matrix from sample points
-		cov.l <- dCov2d(coordinates(samples),covmodel,sill,range,nugget)
+		cov.l <- dCov2d(coordinates(samples),covmodel,sill,range,nugget,anis)
 		
 		# if ordinary kriging add lagrange condition
 		if (any(c('O','o') == kriging.method)) {
@@ -172,7 +142,7 @@
 		
 		res <- 0		
 		retcode = 0
-		result = .C("conditionalSimInit_2f", as.single(xmin), as.single(xmax), as.integer(nx), as.single(ymin),as.single(ymax), as.integer(ny), as.single(sill), as.single(range), as.single(nugget), as.single(srcXY), as.single(srcData), as.integer(numSrc), as.integer(.covID(covmodel)), as.integer(check), as.integer(.gpuSimKrigeMethod(kriging.method)), as.single(mu), retcode = as.integer(retcode), PACKAGE="gpusim")
+		result = .C("conditionalSimInit_2f", as.single(xmin), as.single(xmax), as.integer(nx), as.single(ymin),as.single(ymax), as.integer(ny), as.single(sill), as.single(range), as.single(nugget), as.single(srcXY), as.single(srcData), as.integer(numSrc), as.integer(.covID(covmodel)), as.single(anis[1]), as.single(anis[4]), as.integer(check), as.integer(.gpuSimKrigeMethod(kriging.method)), as.single(mu), retcode = as.integer(retcode), PACKAGE="gpusim")
 		if (result$retcode != 0) stop(paste("Initialization of conditional simulation returned error: ",.gpuSimCatchError(result$retcode)))
 		
 		
@@ -210,20 +180,12 @@
 			dim(out) = c(nx,ny,k)
 		}
 		else {
-			out = SpatialPixelsDataFrame(coordinates(grid),as.data.frame(matrix(res$out,ncol = k,nrow = nx*ny)))
+			out = SpatialGridDataFrame(grid,as.data.frame(matrix(res$out,ncol = k,nrow = nx*ny)))	
 			names(out@data) = paste("sim",1:k,sep="")
 		}				
 	}
 	else if (!missing(k)) {
 		#uncond sim
-		if (class(grid) != "GridTopology") {
-			if (class(grid) == "SpatialPixelsDataFrame") {
-				grid = grid@grid
-			}
-			else {
-				stop("Error: grid must be of type SpatialPixelsDataFrame or GridTopology")
-			}
-		}
 
 		xmin = grid@cellcentre.offset[1]
 		ymin = grid@cellcentre.offset[2]
@@ -236,7 +198,7 @@
 		
 		
 		retcode = 0
-		result = .C("unconditionalSimInit_2f", as.single(xmin), as.single(xmax), as.integer(nx), as.single(ymin),as.single(ymax), as.integer(ny), as.single(sill), as.single(range), as.single(nugget), as.integer(.covID(covmodel)), as.integer(check), retcode = as.integer(retcode), PACKAGE="gpusim")
+		result = .C("unconditionalSimInit_2f", as.single(xmin), as.single(xmax), as.integer(nx), as.single(ymin),as.single(ymax), as.integer(ny), as.single(sill), as.single(range), as.single(nugget), as.integer(.covID(covmodel)), as.single(anis[1]), as.single(anis[4]), as.integer(check), retcode = as.integer(retcode), PACKAGE="gpusim")
 		if (result$retcode != 0) stop(paste("Initialization of unconditional simulation returned error: ",.gpuSimCatchError(result$retcode)))			
 		res = .C("unconditionalSimRealizations_2f", out=single(nx*ny*k), as.integer(k), retcode = as.integer(retcode), PACKAGE="gpusim")
 		if (result$retcode != 0) stop(paste("Generation of realizations for conditional simulation returned error: ",.gpuSimCatchError(result$retcode)))
@@ -248,7 +210,7 @@
 			dim(out) = c(nx,ny,k)
 		}
 		else {
-			out = SpatialPixelsDataFrame(coordinates(grid),as.data.frame(matrix(res$out,ncol = k,nrow = nx*ny)))	
+			out = SpatialGridDataFrame(grid,as.data.frame(matrix(res$out,ncol = k,nrow = nx*ny)))	
 			names(out@data) = paste("sim",1:k,sep="")
 		}		
 	}
@@ -280,31 +242,9 @@
 	time.total <- proc.time()[3] # total runtime of function
 	times = c() # runtimes of single computation steps
 	out = 0
- 
-	if (missing(grid)) {
-		stop("Error: Missing grid argument!")
-	}
-	
-	if (missing(covmodel) || missing(sill) || missing(range) || missing(nugget)) {
-		stop("Error: Missing one or more arguments for covariance function!")
-	}
-	
-	
-	if (verify == TRUE && as.sp == FALSE) {
-		cat("Notice that verification forces as.sp = TRUE!\n")
-		as.sp = TRUE
-	}
 	
 	if (!missing(uncond) && !missing(samples)) {
 		#only conditioning, k is ignored and derived from uncond object
-		if (class(grid) != "GridTopology") {
-			if (class(grid) == "SpatialPixelsDataFrame") {
-				grid = grid@grid
-			}
-			else {
-				stop("Error: grid must be of type SpatialPixelsDataFrame or GridTopology")
-			}
-		}
 		
 		if (class(samples) != "SpatialPointsDataFrame") {
 			stop("Error: samples must be of type SpatialPointsDataFrame")
@@ -316,7 +256,6 @@
 		if (length(dim(uncond)) != 3) {
 			stop("Error: expected a 3 dimensional array as unconditional realizations")
 		}
-	
 	
 		if (all(c('O','o','S','s') != kriging.method)) {
 			stop("Error: Unknown kriging method")
@@ -412,21 +351,13 @@
 			dim(out) = c(nx,ny,k)
 		}
 		else {
-			out = SpatialPixelsDataFrame(coordinates(grid),as.data.frame(matrix(res$out,ncol = k,nrow = nx*ny)))	
+			out = SpatialGridDataFrame(grid,as.data.frame(matrix(res$out,ncol = k,nrow = nx*ny)))		
 			names(out@data) = paste("sim",1:k,sep="")
 		}
 			
 	}
 	else if (!missing(k) && !missing(samples)) {
 		#conditional simulation
-		if (class(grid) != "GridTopology") {
-			if (class(grid) == "SpatialPixelsDataFrame") {
-				grid = grid@grid
-			}
-			else {
-				stop("Error: grid must be of type SpatialPixelsDataFrame or GridTopology")
-			}
-		}
 	
 		if (class(samples) != "SpatialPointsDataFrame") {
 			stop("Error: samples must be of type SpatialPointsDataFrame")
@@ -527,20 +458,12 @@
 			dim(out) = c(nx,ny,k)
 		}
 		else {
-			out = SpatialPixelsDataFrame(coordinates(grid),as.data.frame(matrix(res$out,ncol = k,nrow = nx*ny)))
+			out = SpatialGridDataFrame(grid,as.data.frame(matrix(res$out,ncol = k,nrow = nx*ny)))	
 			names(out@data) = paste("sim",1:k,sep="")
 		}				
 	}
 	else if (!missing(k)) {
 		#uncond sim
-		if (class(grid) != "GridTopology") {
-			if (class(grid) == "SpatialPixelsDataFrame") {
-				grid = grid@grid
-			}
-			else {
-				stop("Error: grid must be of type SpatialPixelsDataFrame or GridTopology")
-			}
-		}
 
 		xmin = grid@cellcentre.offset[1]
 		ymin = grid@cellcentre.offset[2]
@@ -570,7 +493,7 @@
 			dim(out) = c(nx,ny,k)
 		}
 		else {
-			out = SpatialPixelsDataFrame(coordinates(grid),as.data.frame(matrix(res$out,ncol = k,nrow = nx*ny)))	
+			out = SpatialGridDataFrame(grid,as.data.frame(matrix(res$out,ncol = k,nrow = nx*ny)))	
 			names(out@data) = paste("sim",1:k,sep="")
 		}		
 	}
