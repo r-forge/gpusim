@@ -9,7 +9,62 @@
 
 
 
-gpuSim <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method = 'O', mu = 0, as.sp = FALSE, check = FALSE, verify = FALSE, prec.double=FALSE, anis=c(0,0,0,1,1)) {
+gpuSim <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method = 'O', mu = 0, as.sp = FALSE, check = FALSE, benchmark = FALSE, prec.double=FALSE, anis=c(0,0,0,1,1)) {
+	
+	if (missing(grid)) {
+		stop("Error: Missing grid argument!")
+	}
+	
+	if (missing(covmodel) || missing(sill) || missing(range) || missing(nugget)) {
+		stop("Error: Missing one or more arguments for covariance function!")
+	}
+	
+	if (class(grid) != "GridTopology") {
+		if (class(grid) == "SpatialPixelsDataFrame" || class(grid) == "SpatialGridDataFrame") {
+			grid = grid@grid
+		}
+		else {
+			stop("Error: grid must be of type SpatialPixelsDataFrame, SpatialGridDataFrame, or GridTopology")
+		}
+	}
+	
+	# always use 5 pars to describe anisotropy
+	if (length(anis) == 2) {
+		anis = c(anis[1],0,0,anis[2],1)
+	}
+	if (length(anis) != 5) {
+		stop("Expected 5 or 2 anisotropy values!")
+	}
+	
+	dims = length(grid@cells.dim)
+	if (dims == 2) {
+		if (prec.double) {
+			return(.sim2d(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, as.sp, check, benchmark, anis))
+		}
+		else return(.sim2f(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, as.sp, check, benchmark, anis))
+	}
+	else if (dims == 3) {
+		if (prec.double) {
+			return(.sim3d(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, as.sp, check, benchmark, anis))
+		}
+		else return(.sim3f(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, as.sp, check, benchmark, anis))
+	}
+	else stop("Only two- or three-dimensional simulation supported!")
+}
+
+
+
+
+
+
+
+
+
+
+
+
+gpuSimEval <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method = 'O', mu = 0, as.sp = FALSE, check = FALSE, verify = FALSE, prec.double=FALSE) {
+	stop("Evaluation function currently not working but will be available soon")
 	
 	if (missing(grid)) {
 		stop("Error: Missing grid argument!")
@@ -44,13 +99,13 @@ gpuSim <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, krig
 	dims = length(grid@cells.dim)
 	if (dims == 2) {
 		if (prec.double) {
-			return(.sim2d(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, as.sp, check, verify, anis))
+			return(.sim2dEval(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, as.sp, check, verify, anis))
 		}
-		else return(.sim2f(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, as.sp, check, verify, anis))
+		else return(.sim2fEval(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, as.sp, check, verify, anis))
 	}
 	else if (dims == 3) {
 		if (prec.double) {
-			return(.sim3d(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, as.sp, check, verify, anis))
+			return(.sim3dEval(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, as.sp, check, verify, anis))
 		}
 		else stop("3d simulation in single precision currently not implemented, use prec.double = TRUE instead!")
 	}
@@ -59,18 +114,32 @@ gpuSim <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, krig
 
 
 
+gpuSimVerify <- function(simsp) {
 
-
-
-
-gpuSimEval <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method = 'O', mu = 0, as.sp = FALSE, check = FALSE, verify = FALSE, prec.double=FALSE) {
-	stop("Evaluation function currently not working but will be available soon")
-	
-	if (prec.double) {
-		return(.sim2dEval(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, as.sp, check, verify))
+	if (class(sim) != "SpatialGridDataFrame") {
+		stop("Verification needs input type SpatialGridDataFrame. Use as.sp = TRUE for simulation before.")
 	}
-	else return(.sim2fEval(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, as.sp, check, verify))
+
+	gamma = 0
+	v0 = variogram(out[[1]]~1,out,cloud=FALSE)
+	for (i in 2:ncol(out)) {
+		v = variogram(out[[i]]~1,out,cloud=FALSE)
+		v0$gamma = v0$gamma + v$gamma
+	}
+	v0$gamma = v0$gamma / ncol(out)
+	print(plot(v0,vgm(sill, model, range, nugget)))	
+	cat("Verification returned the following experimental variogram: \n")
+	print(v0)
 }
+
+
+
+
+
+
+
+
+
 
 
 

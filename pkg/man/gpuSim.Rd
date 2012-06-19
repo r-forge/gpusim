@@ -7,7 +7,7 @@ Performs (un)conditional simulation of gaussian random fields using NVIDIAs CUDA
 }
 
 \usage{
-gpuSim <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method = 'O', mu = 0, as.sp = FALSE, check = FALSE, verify = FALSE, prec.double=FALSE, anis=c(0,0,0,1,1))
+gpuSim <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method = 'O', mu = 0, as.sp = FALSE, check = FALSE, benchmark = FALSE, prec.double=FALSE, anis=c(0,0,0,1,1))
 }
 
 \arguments{
@@ -30,7 +30,7 @@ gpuSim <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, krig
 	\item{mu}{Mean value for conditioning the field using simple kriging. If ordinary kriging is used, this argument is unused.}
 	\item{as.sp}{TRUE or FALSE, should result be returned as SpatialPixelsDataFrame or as an simple array?}
 	\item{check}{TRUE or FALSE, should fft of covariance matrix be checked for negative real parts?}
-	\item{verify}{If TRUE, an average experimental variogram of the simulation results is generated and plotted together with the theoretical variogram model. Depending on the simulation dimensions, this may take some time. Using verification forces as.sp = TRUE.}
+	\item{benchmark}{If TRUE, detailed information about computation times of internally called functions is given.}
 	\item{prec.double}{If TRUE, double precision is used. Notice that the performance for double precision strongly depends on the available hardware.}
 	\item{anis}{Anisotropy argument, see ?vgm from gstat package for further information}
 
@@ -46,15 +46,12 @@ This is a wrapper function for different types of simulation routines such as un
 }
 
 \value{As written above, the result is either a set of unconditional or conditional realizations of the specified grid and covariance function.	
-Note that the \emph{as.sp} argument determines the class of the result. If it is set to TRUE, a SpatialPixelsDataFrame object containing the realizations as different columns in the data attribute will be returned. Otherwise, a three-dimensional raw array is returned where the third index denotes the realization, the second denotes the row and the first denotes the column in the grid.
+Note that the \emph{as.sp} argument determines the class of the result. If it is set to TRUE, a SpatialPixelsDataFrame object containing the realizations as different columns in the data attribute will be returned. Otherwise, a raw array is returned where the last index denotes the realization.
 If returned as SpatialPixelsDataFrame object, each realization is one column of the object's \emph{data} slot.
 }
 
 \author{Marius Appel \email{marius.appel@uni-muenster.de}}
 
-\note{
-Currently, 3d simulation is only implemented in double precision. Up to now, anisotropy is only used for two dimensional simulation.
-}
 
 \examples{
 library(gpusim)
@@ -104,7 +101,7 @@ coordinates(samples)=c("x","y")
 samples = SpatialPointsDataFrame(samples,as.data.frame(sample_z))
 
 # conditional simulation without sp interoperability using ordinary kriging
-simGPUcond = gpuSim(grid, model, sill, range, nugget, k, samples anis)
+simGPUcond = gpuSim(grid, model, sill, range, nugget, k, samples, anis=anis)
 image.plot(simGPUcond[,,1]) ## plot 5-th realization
 
 # conditional simulation with sp interoperability using ordinary kriging

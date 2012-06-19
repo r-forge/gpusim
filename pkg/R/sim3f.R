@@ -4,7 +4,7 @@
  
  
  
- .sim3d <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method = 'O', mu = 0, as.sp = FALSE, check = FALSE, benchmark = FALSE, anis=c(0,0,0,1,1)) {
+ .sim3f <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method = 'O', mu = 0, as.sp = FALSE, check = FALSE, benchmark = FALSE, anis=c(0,0,0,1,1)) {
 	
 	if (benchmark) {
 		times = c() # runtimes of single computation steps
@@ -85,7 +85,7 @@
 		retcode = 0
 		if (benchmark) .gpuSimStartTimer()
 		
-		result = .C("conditioningInit_2d", as.double(xmin), as.double(xmax), as.integer(nx), as.double(ymin),as.double(ymax), as.integer(ny), as.double(sill), as.double(range), as.double(nugget), as.double(t(coordinates(samples))), as.double(srcData), as.integer(numSrc),  as.integer(k), as.double(uncond), as.integer(.covID(covmodel)), as.double(anis[1]), as.double(anis[4]), as.integer(.gpuSimKrigeMethod(kriging.method)), as.double(mu), retcode = as.integer(retcode),PACKAGE="gpusim")
+		result = .C("conditioningInit_2d", as.single(xmin), as.single(xmax), as.integer(nx), as.single(ymin),as.single(ymax), as.integer(ny), as.single(sill), as.single(range), as.single(nugget), as.single(t(coordinates(samples))), as.single(srcData), as.integer(numSrc),  as.integer(k), as.single(uncond), as.integer(.covID(covmodel)), as.single(anis[1]), as.single(anis[4]), as.integer(.gpuSimKrigeMethod(kriging.method)), as.single(mu), retcode = as.integer(retcode),PACKAGE="gpusim")
 		if (result$retcode != 0) stop(paste("Initialization of conditioning returned error:",.gpuSimCatchError(result$retcode)))
 		
 		if (benchmark) {
@@ -98,7 +98,7 @@
 		if (any(c('O','o') == kriging.method)) {	
 			# generate all unconditional realizations and get their residuals to the data
 			if (benchmark) .gpuSimStartTimer()
-			res = .C("conditioningResiduals_2d", out=double((numSrc + 1) * k),retcode = as.integer(retcode), PACKAGE="gpusim")
+			res = .C("conditioningResiduals_2d", out=single((numSrc + 1) * k),retcode = as.integer(retcode), PACKAGE="gpusim")
 			if (res$retcode != 0) stop(paste("Computation of residuals between generated unconditional realizations and given data returned error: ",.gpuSimCatchError(res$retcode)))		
 			
 			if (benchmark) {
@@ -121,7 +121,7 @@
 			
 			# interpolate residuals and add to the unconditional realizations
 			if (benchmark) .gpuSimStartTimer()			
-			res = .C("conditioningKrigeResiduals_2d", out=double(nx*ny*k), as.double(y), retcode = as.integer(retcode), PACKAGE="gpusim")
+			res = .C("conditioningKrigeResiduals_2d", out=single(nx*ny*k), as.single(y), retcode = as.integer(retcode), PACKAGE="gpusim")
 			if (res$retcode != 0) stop(paste("Generation of realizations for conditional simulation returned error: ",.gpuSimCatchError(res$retcode)))
 			
 			if (benchmark) {
@@ -133,7 +133,7 @@
 		else if (any(c('S','s') == kriging.method)) {	
 			# generate all unconditional realizations and get their residuals to the data
 			if (benchmark) .gpuSimStartTimer()
-			res = .C("conditioningResiduals_2d", out=double(numSrc * k),retcode = as.integer(retcode), PACKAGE="gpusim")
+			res = .C("conditioningResiduals_2d", out=single(numSrc * k),retcode = as.integer(retcode), PACKAGE="gpusim")
 			if (res$retcode != 0) stop(paste("Computation of residuals between generated unconditional realizations and given data returned error: ",.gpuSimCatchError(res$retcode)))		
 			if (benchmark) {
 				t1 = .gpuSimStopTimer()
@@ -153,7 +153,7 @@
 			
 			# interpolate residuals and add to the unconditional realizations	
 			if (benchmark) .gpuSimStartTimer()	
-			res = .C("conditioningSimpleKrigeResiduals_2d", out=double(nx*ny*k), as.double(y), retcode = as.integer(retcode), PACKAGE="gpusim")
+			res = .C("conditioningSimpleKrigeResiduals_2d", out=single(nx*ny*k), as.single(y), retcode = as.integer(retcode), PACKAGE="gpusim")
 			if (res$retcode != 0) stop(paste("Generation of realizations for conditional simulation returned error: ", .gpuSimCatchError(res$retcode)))
 			if (benchmark) {
 				t1 = .gpuSimStopTimer()
@@ -204,7 +204,7 @@
 		ymax = ymin + ny * dy	
 		zmax = zmin + nz * dz		
 	
-		if (benchmark) .gpuSimStartTimer()
+		if (benchmark) .gpuSimStartTimer()	
 		numSrc = length(samples)	
 		if (length(samples@data) != 1) {
 			stop("Error: samples contain more than one data field!")
@@ -226,7 +226,7 @@
 		res <- 0		
 		retcode = 0
 		if (benchmark) .gpuSimStartTimer()
-		result = .C("conditionalSimInit_3d", as.double(xmin), as.double(xmax), as.integer(nx), as.double(ymin),as.double(ymax), as.integer(ny), as.double(zmin), as.double(zmax), as.integer(nz), as.double(sill), as.double(range), as.double(nugget), as.double(t(coordinates(samples))), as.double(srcData), as.integer(numSrc), as.integer(.covID(covmodel)), as.double(anis), as.integer(check), as.integer(.gpuSimKrigeMethod(kriging.method)), as.double(mu), retcode = as.integer(retcode), PACKAGE="gpusim")
+		result = .C("conditionalSimInit_3f", as.single(xmin), as.single(xmax), as.integer(nx), as.single(ymin),as.single(ymax), as.integer(ny), as.single(zmin), as.single(zmax), as.integer(nz), as.single(sill), as.single(range), as.single(nugget), as.single(t(coordinates(samples))), as.single(srcData), as.integer(numSrc), as.integer(.covID(covmodel)), as.single(anis), as.integer(check), as.integer(.gpuSimKrigeMethod(kriging.method)), as.single(mu), retcode = as.integer(retcode), PACKAGE="gpusim")
 		if (result$retcode != 0) stop(paste("Initialization of conditional simulation returned error: ",.gpuSimCatchError(result$retcode)))
 		if (benchmark) {
 			t1 = .gpuSimStopTimer()
@@ -238,7 +238,7 @@
 		if (any(c('O','o') == kriging.method)) {	
 			# generate all unconditional realizations and get their residuals to the data
 			if (benchmark) .gpuSimStartTimer()	
-			res = .C("conditionalSimUncondResiduals_3d", out=double((numSrc + 1) * k), as.integer(k),retcode = as.integer(retcode), PACKAGE="gpusim")
+			res = .C("conditionalSimUncondResiduals_3f", out=single((numSrc + 1) * k), as.integer(k),retcode = as.integer(retcode), PACKAGE="gpusim")
 			if (res$retcode != 0) stop(paste("Computation of residuals between generated unconditional realizations and given data returned error: ",.gpuSimCatchError(res$retcode)))		
 			if (benchmark) {
 				t1 = .gpuSimStopTimer()
@@ -258,7 +258,7 @@
 			
 			# interpolate residuals and add to the unconditional realizations		
 			if (benchmark) .gpuSimStartTimer()	
-			res = .C("conditionalSimKrigeResiduals_3d", out=double(nx*ny*nz*k), as.double(y), retcode = as.integer(retcode), PACKAGE="gpusim")
+			res = .C("conditionalSimKrigeResiduals_3f", out=single(nx*ny*nz*k), as.single(y), retcode = as.integer(retcode), PACKAGE="gpusim")
 			if (res$retcode != 0) stop(paste("Generation of realizations for conditional simulation returned error: ",.gpuSimCatchError(res$retcode)))
 			if (benchmark) {
 				t1 = .gpuSimStopTimer()
@@ -269,7 +269,7 @@
 		else if (any(c('S','s') == kriging.method)) {	
 			# generate all unconditional realizations and get their residuals to the data
 			if (benchmark) .gpuSimStartTimer()	
-			res = .C("conditionalSimUncondResiduals_3d", out=double(numSrc * k), as.integer(k),retcode = as.integer(retcode), PACKAGE="gpusim")
+			res = .C("conditionalSimUncondResiduals_3f", out=single(numSrc * k), as.integer(k),retcode = as.integer(retcode), PACKAGE="gpusim")
 			if (res$retcode != 0) stop(paste("Computation of residuals between generated unconditional realizations and given data returned error: ",.gpuSimCatchError(res$retcode)))		
 			if (benchmark) {
 				t1 = .gpuSimStopTimer()
@@ -289,7 +289,7 @@
 			
 			# interpolate residuals and add to the unconditional realizations		
 			if (benchmark) .gpuSimStartTimer()
-			res = .C("conditionalSimSimpleKrigeResiduals_3d", out=double(nx*ny*nz*k), as.double(y), retcode = as.integer(retcode), PACKAGE="gpusim")
+			res = .C("conditionalSimSimpleKrigeResiduals_3f", out=single(nx*ny*nz*k), as.single(y), retcode = as.integer(retcode), PACKAGE="gpusim")
 			if (res$retcode != 0) stop(paste("Generation of realizations for conditional simulation returned error: ", .gpuSimCatchError(res$retcode)))
 			if (benchmark) {
 				t1 = .gpuSimStopTimer()
@@ -299,7 +299,7 @@
 		}		
 		
 		# clean up
-		result = .C("conditionalSimRelease_3d",retcode = as.integer(retcode),PACKAGE="gpusim")
+		result = .C("conditionalSimRelease_3f",retcode = as.integer(retcode),PACKAGE="gpusim")
 		if (result$retcode != 0) stop(paste("Releasing memory for conditional simulation returned error: ",.gpuSimCatchError(result$retcode)))
 			
 
@@ -332,7 +332,7 @@
 		retcode = 0
 		
 		if (benchmark) .gpuSimStartTimer()
-		result = .C("unconditionalSimInit_3d", as.double(xmin), as.double(xmax), as.integer(nx), as.double(ymin),as.double(ymax), as.integer(ny), as.double(zmin), as.double(zmax), as.integer(nz), as.double(sill), as.double(range), as.double(nugget), as.integer(.covID(covmodel)), as.double(anis), as.integer(check), retcode = as.integer(retcode), PACKAGE="gpusim")
+		result = .C("unconditionalSimInit_3f", as.single(xmin), as.single(xmax), as.integer(nx), as.single(ymin),as.single(ymax), as.integer(ny), as.single(zmin), as.single(zmax), as.integer(nz), as.single(sill), as.single(range), as.single(nugget), as.integer(.covID(covmodel)), as.single(anis), as.integer(check), retcode = as.integer(retcode), PACKAGE="gpusim")
 		if (result$retcode != 0) stop(paste("Initialization of unconditional simulation returned error: ",.gpuSimCatchError(result$retcode)))			
 		if (benchmark) {
 			t1 = .gpuSimStopTimer()
@@ -341,7 +341,7 @@
 		}
 		
 		if (benchmark) .gpuSimStartTimer()
-		res = .C("unconditionalSimRealizations_3d", out=double(nx*ny*nz*k), as.integer(k), retcode = as.integer(retcode), PACKAGE="gpusim")
+		res = .C("unconditionalSimRealizations_3f", out=single(nx*ny*nz*k), as.integer(k), retcode = as.integer(retcode), PACKAGE="gpusim")
 		if (result$retcode != 0) stop(paste("Generation of realizations for conditional simulation returned error: ",.gpuSimCatchError(result$retcode)))
 		if (benchmark) {
 			t1 = .gpuSimStopTimer()
@@ -349,7 +349,7 @@
 			times = c(times,t1)
 		}
 	
-		result = .C("unconditionalSimRelease_3d", retcode = as.integer(retcode), PACKAGE="gpusim")
+		result = .C("unconditionalSimRelease_3f", retcode = as.integer(retcode), PACKAGE="gpusim")
 		if (result$retcode != 0) stop(paste("Releasing memory for unconditional simulation returned error: ",.gpuSimCatchError(result$retcode)))
 			
 		if (as.sp == FALSE) {

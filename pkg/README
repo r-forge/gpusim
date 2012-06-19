@@ -4,11 +4,8 @@ This vignette contains installation instructions and some examples how to use th
 
 
 TO DO:
-- 3D conditional simulation + conditioning in double prec
-- Complete 3d sim in single precision
 - Check, if DUP=TRUE is necessary in dCov2d,dCov3d
-- Anisotropy 2d, 3d, 3f
-- documentation 3d
 - documentation anisotropy argument
 - rewrite vignette
-- update eval functions
+- In-detail testing
+- Implement verification function (experimental variogram compared to theoretical)
