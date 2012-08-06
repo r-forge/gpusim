@@ -7,5 +7,4 @@ TO DO:
 - Check, if DUP=TRUE is necessary in dCov2d,dCov3d
 - documentation anisotropy argument
 - rewrite vignette
-- In-detail testing
-- Implement verification function (experimental variogram compared to theoretical)
+- implement usefule masking and aggregation functions

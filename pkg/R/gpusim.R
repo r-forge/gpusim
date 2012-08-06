@@ -9,7 +9,7 @@
 
 
 
-gpuSim <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method = 'O', mu = 0, as.sp = FALSE, check = FALSE, benchmark = FALSE, prec.double=FALSE, anis=c(0,0,0,1,1)) {
+gpuSim <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method='O', mu=0, gpu.cache=TRUE, as.sp=FALSE, check=FALSE, benchmark=FALSE, prec.double=FALSE, compute.stats=FALSE, anis=c(0,0,0,1,1)) {
 	
 	if (missing(grid)) {
 		stop("Error: Missing grid argument!")
@@ -37,19 +37,24 @@ gpuSim <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, krig
 	}
 	
 	dims = length(grid@cells.dim)
+	out <- 0
 	if (dims == 2) {
 		if (prec.double) {
-			return(.sim2d(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, as.sp, check, benchmark, anis))
+			out <- .sim2d(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, gpu.cache, as.sp, check, benchmark, compute.stats, anis)
 		}
-		else return(.sim2f(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, as.sp, check, benchmark, anis))
+		else out <- .sim2f(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, gpu.cache, as.sp, check, benchmark, compute.stats, anis)
 	}
 	else if (dims == 3) {
 		if (prec.double) {
-			return(.sim3d(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, as.sp, check, benchmark, anis))
+			out <- .sim3d(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, gpu.cache, as.sp, check, benchmark, compute.stats, anis)
 		}
-		else return(.sim3f(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, as.sp, check, benchmark, anis))
+		else out <- .sim3f(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, gpu.cache, as.sp, check, benchmark, compute.stats, anis)
 	}
 	else stop("Only two- or three-dimensional simulation supported!")
+	
+	
+	
+	return(out)
 }
 
 

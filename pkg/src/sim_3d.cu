@@ -1090,6 +1090,8 @@ struct cond_state_3d {
 	double *d_sampledata; // data values of samples
 	//double *d_covinv; // inverse covariance matrix of samples
 	double *d_uncond;
+	double *h_uncond; //cpu uncond cache
+	bool uncond_gpucache;
 	int covmodel;
 	int k;
 	double mu; // known mean for simple kriging
@@ -1115,7 +1117,7 @@ extern "C" {
 void EXPORT conditionalSimInit_3d(double *p_xmin, double *p_xmax, int *p_nx, double *p_ymin, double *p_ymax, 
 								  int *p_ny, double *p_zmin, double *p_zmax, int *p_nz, double *p_sill, double *p_range, 
 								  double *p_nugget, double *p_srcXY,  double *p_srcData, int *p_numSrc, int *p_covmodel, 
-								  double *p_anis, int *do_check, int *krige_method, double *mu, int *ret_code) {
+								  double *p_anis, int *do_check, int *krige_method, double *mu,int *uncond_gpucache, int *ret_code) {
 	*ret_code = OK;
 	cudaError_t cudaStatus;
 	cublasInit();
@@ -1152,7 +1154,7 @@ void EXPORT conditionalSimInit_3d(double *p_xmin, double *p_xmax, int *p_nx, dou
 	cond_global_3d.afac1 = 1/p_anis[3];
 	cond_global_3d.afac2 = 1/p_anis[4];
 
-
+	cond_global_3d.uncond_gpucache = (*uncond_gpucache != 0);
 
 	// 1d cuda grid
 	cond_global_3d.blockSize1d = dim3(256);
@@ -1320,8 +1322,14 @@ void EXPORT conditionalSimUncondResiduals_3d(double *p_out, int *p_k, int *ret_c
 	cudaStatus = cudaMalloc((void**)&d_fftrand,sizeof(cufftDoubleComplex) * cond_global_3d.n * cond_global_3d.m * cond_global_3d.o); 
 	if (cudaStatus != cudaSuccess)  printf("cudaMalloc returned error code %d\n", cudaStatus);
 	cudaMalloc((void**)&d_amp,sizeof(cufftDoubleComplex)*cond_global_3d.n*cond_global_3d.m*cond_global_3d.o);
-	cudaMalloc((void**)&cond_global_3d.d_uncond,sizeof(double)*cond_global_3d.nx*cond_global_3d.ny*cond_global_3d.nz * cond_global_3d.k);
-	
+	// GPU OR CPU CACHING OF UNCOND REALIZATIONS
+	if (cond_global_3d.uncond_gpucache) {
+		cudaMalloc((void**)&cond_global_3d.d_uncond,sizeof(double)*cond_global_3d.nx*cond_global_3d.ny*cond_global_3d.nz * cond_global_3d.k); // Hold all uncond realizations in GPU memory
+	}
+	else {
+		cudaMalloc((void**)&cond_global_3d.d_uncond,sizeof(double)*cond_global_3d.nx*cond_global_3d.ny*cond_global_3d.nz ); // Only one realization held in GPU memory
+		cond_global_3d.h_uncond = (double*)malloc(sizeof(double)*cond_global_3d.nx*cond_global_3d.ny*cond_global_3d.nz*cond_global_3d.k); // Hold all uncond realizations in CPU main memory
+	}
 	
 	if (cond_global_3d.krige_method == ORDINARY) {
 		cudaMalloc((void**)&d_residuals,sizeof(double)* (cond_global_3d.numSrc + 1));
@@ -1352,17 +1360,32 @@ void EXPORT conditionalSimUncondResiduals_3d(double *p_out, int *p_k, int *ret_c
 		if (cond_global_3d.nx % blockSize3dhalf.x != 0) ++blockCount3dhalf.x;
 		if (cond_global_3d.ny % blockSize3dhalf.y != 0) ++blockCount3dhalf.y;
 		if (cond_global_3d.nz % blockSize3dhalf.z != 0) ++blockCount3dhalf.z;
-		ReDiv_3d<<<blockCount3dhalf, blockSize3dhalf>>>(cond_global_3d.d_uncond + l*cond_global_3d.nx*cond_global_3d.ny*cond_global_3d.nz, d_amp, std::sqrt((double)(cond_global_3d.n*cond_global_3d.m*cond_global_3d.o)), cond_global_3d.nx, cond_global_3d.ny, cond_global_3d.nz);
+		if (cond_global_3d.uncond_gpucache) {
+			ReDiv_3d<<<blockCount3dhalf, blockSize3dhalf>>>(cond_global_3d.d_uncond + l*cond_global_3d.nx*cond_global_3d.ny*cond_global_3d.nz, d_amp, std::sqrt((double)(cond_global_3d.n*cond_global_3d.m*cond_global_3d.o)), cond_global_3d.nx, cond_global_3d.ny, cond_global_3d.nz);
+		}
+		else {
+			ReDiv_3d<<<blockCount3dhalf, blockSize3dhalf>>>(cond_global_3d.d_uncond, d_amp, std::sqrt((double)(cond_global_3d.n*cond_global_3d.m*cond_global_3d.o)), cond_global_3d.nx, cond_global_3d.ny, cond_global_3d.nz);
+		}
 		cudaStatus = cudaThreadSynchronize();	
 		if (cudaStatus != cudaSuccess) printf("cudaThreadSynchronize returned error code %d after launching ReDiv_3d!\n", cudaStatus);
 		
 		// d_uncond is now a unconditional realization 
 		// Compute residuals between samples and d_uncond
-		if (cond_global_3d.krige_method == ORDINARY) {
-			residualsOrdinary_3d<<<cond_global_3d.blockCountSamples,cond_global_3d.blockSizeSamples>>>(d_residuals,cond_global_3d.d_sampledata,cond_global_3d.d_uncond+l*(cond_global_3d.nx*cond_global_3d.ny*cond_global_3d.nz),cond_global_3d.d_sampleindices,cond_global_3d.nx,cond_global_3d.ny,cond_global_3d.nz,cond_global_3d.numSrc);
+		if (cond_global_3d.uncond_gpucache) {
+			if (cond_global_3d.krige_method == ORDINARY) {
+				residualsOrdinary_3d<<<cond_global_3d.blockCountSamples,cond_global_3d.blockSizeSamples>>>(d_residuals,cond_global_3d.d_sampledata,cond_global_3d.d_uncond+l*(cond_global_3d.nx*cond_global_3d.ny*cond_global_3d.nz),cond_global_3d.d_sampleindices,cond_global_3d.nx,cond_global_3d.ny,cond_global_3d.nz,cond_global_3d.numSrc);
+			}
+			else if (cond_global_3d.krige_method == SIMPLE) {
+				residualsSimple_3d<<<cond_global_3d.blockCountSamples,cond_global_3d.blockSizeSamples>>>(d_residuals,cond_global_3d.d_sampledata,cond_global_3d.d_uncond+l*(cond_global_3d.nx*cond_global_3d.ny*cond_global_3d.nz),cond_global_3d.d_sampleindices,cond_global_3d.nx,cond_global_3d.ny,cond_global_3d.nz,cond_global_3d.numSrc, cond_global_3d.mu);
+			}
 		}
-		else if (cond_global_3d.krige_method == SIMPLE) {
-			residualsSimple_3d<<<cond_global_3d.blockCountSamples,cond_global_3d.blockSizeSamples>>>(d_residuals,cond_global_3d.d_sampledata,cond_global_3d.d_uncond+l*(cond_global_3d.nx*cond_global_3d.ny*cond_global_3d.nz),cond_global_3d.d_sampleindices,cond_global_3d.nx,cond_global_3d.ny,cond_global_3d.nz,cond_global_3d.numSrc, cond_global_3d.mu);
+		else {
+			if (cond_global_3d.krige_method == ORDINARY) {
+				residualsOrdinary_3d<<<cond_global_3d.blockCountSamples,cond_global_3d.blockSizeSamples>>>(d_residuals,cond_global_3d.d_sampledata,cond_global_3d.d_uncond,cond_global_3d.d_sampleindices,cond_global_3d.nx,cond_global_3d.ny,cond_global_3d.nz,cond_global_3d.numSrc);
+			}
+			else if (cond_global_3d.krige_method == SIMPLE) {
+				residualsSimple_3d<<<cond_global_3d.blockCountSamples,cond_global_3d.blockSizeSamples>>>(d_residuals,cond_global_3d.d_sampledata,cond_global_3d.d_uncond,cond_global_3d.d_sampleindices,cond_global_3d.nx,cond_global_3d.ny,cond_global_3d.nz,cond_global_3d.numSrc, cond_global_3d.mu);
+			}
 		}
 
 
@@ -1376,6 +1399,10 @@ void EXPORT conditionalSimUncondResiduals_3d(double *p_out, int *p_k, int *ret_c
 		}
 		else if (cond_global_3d.krige_method == SIMPLE) {
 			cudaMemcpy(p_out + l*cond_global_3d.numSrc,d_residuals,sizeof(double) * cond_global_3d.numSrc,cudaMemcpyDeviceToHost);	
+		}
+		// if needed, cache uncond realizations on cpu
+		if (!cond_global_3d.uncond_gpucache) {
+			cudaMemcpy(cond_global_3d.h_uncond+l*cond_global_3d.nx*cond_global_3d.ny*cond_global_3d.nz,cond_global_3d.d_uncond, sizeof(float)*cond_global_3d.nx*cond_global_3d.ny*cond_global_3d.nz,cudaMemcpyDeviceToHost);
 		}
 	}
 	curandDestroyGenerator(curandGen);
@@ -1420,7 +1447,13 @@ void EXPORT conditionalSimKrigeResiduals_3d(double *p_out, double *p_y, int *ret
 		if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching krigingExpKernel_3d!\n", cudaStatus);
 		
 		// Add result to unconditional realization
-		addResSim_3d<<<blockCntCond,blockSizeCond>>>(d_respred, cond_global_3d.d_uncond + l*cond_global_3d.nx*cond_global_3d.ny*cond_global_3d.nz, cond_global_3d.nx*cond_global_3d.ny*cond_global_3d.nz);
+		if (cond_global_3d.uncond_gpucache) {
+			addResSim_3d<<<blockCntCond,blockSizeCond>>>(d_respred, cond_global_3d.d_uncond + l*cond_global_3d.nx*cond_global_3d.ny*cond_global_3d.nz, cond_global_3d.nx*cond_global_3d.ny*cond_global_3d.nz);
+		}
+		else {
+			cudaMemcpy(cond_global_3d.d_uncond, cond_global_3d.h_uncond+l*cond_global_3d.nx*cond_global_3d.ny*cond_global_3d.nz, sizeof(double)*cond_global_3d.nx*cond_global_3d.ny*cond_global_3d.nz,cudaMemcpyHostToDevice);
+			addResSim_3d<<<blockCntCond,blockSizeCond>>>(d_respred, cond_global_3d.d_uncond, cond_global_3d.nx*cond_global_3d.ny*cond_global_3d.nz);	
+		}
 		if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching addResSim_f!\n", cudaStatus);
 		
 		// Write Result to R
@@ -1465,7 +1498,13 @@ void EXPORT conditionalSimSimpleKrigeResiduals_3d(double *p_out, double *p_y, in
 		if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching krigingExpKernel_3d!\n", cudaStatus);
 		
 		// Add result to unconditional realization
-		addResSim_3d<<<blockCntCond,blockSizeCond>>>(d_respred, cond_global_3d.d_uncond + l*cond_global_3d.nx*cond_global_3d.ny*cond_global_3d.nz, cond_global_3d.nx*cond_global_3d.ny*cond_global_3d.nz);
+		if (cond_global_3d.uncond_gpucache) {
+			addResSim_3d<<<blockCntCond,blockSizeCond>>>(d_respred, cond_global_3d.d_uncond + l*cond_global_3d.nx*cond_global_3d.ny*cond_global_3d.nz, cond_global_3d.nx*cond_global_3d.ny*cond_global_3d.nz);
+		}
+		else {
+			cudaMemcpy(cond_global_3d.d_uncond, cond_global_3d.h_uncond+l*cond_global_3d.nx*cond_global_3d.ny*cond_global_3d.nz, sizeof(double)*cond_global_3d.nx*cond_global_3d.ny*cond_global_3d.nz,cudaMemcpyHostToDevice);
+			addResSim_3d<<<blockCntCond,blockSizeCond>>>(d_respred, cond_global_3d.d_uncond, cond_global_3d.nx*cond_global_3d.ny*cond_global_3d.nz);	
+		}
 		if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching addResSim_f!\n", cudaStatus);
 		
 		// Write Result to R
@@ -1488,6 +1527,9 @@ void EXPORT conditionalSimRelease_3d(int *ret_code) {
 	cudaFree(cond_global_3d.d_sampleindices);
 	cudaFree(cond_global_3d.d_cov);
 	cudaFree(cond_global_3d.d_uncond);
+	if (!cond_global_3d.uncond_gpucache) {
+		free(cond_global_3d.h_uncond);
+	}
 }
 
 

@@ -7,7 +7,7 @@ Performs (un)conditional simulation of gaussian random fields using NVIDIAs CUDA
 }
 
 \usage{
-gpuSim <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method = 'O', mu = 0, as.sp = FALSE, check = FALSE, benchmark = FALSE, prec.double=FALSE, anis=c(0,0,0,1,1))
+gpuSim(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method='O', mu=0, gpu.cache=TRUE, as.sp=FALSE, check=FALSE, benchmark=FALSE, prec.double=FALSE, compute.stats=FALSE, anis=c(0,0,0,1,1))
 }
 
 \arguments{
@@ -28,12 +28,13 @@ gpuSim <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, krig
 	\item{uncond}{Realizations of an unconditional simulation. Used together with \emph{samples} to condition previously computed realizations of an unconditional simulation using real sample data. The realizations can be given either as a three-dimensional array with the realization as third index or as a SpatialPixelsDataFrame object containing realizations as data fields. Note that you have to give the same covariance function which was used for generating the unconditional simulation in order to get meaningful results.}	
 	\item{kriging.method}{String identifier of the kriging method used for conditioning. Currently 's' or 'S' for simple kriging and 'o' or 'O' for ordinary kriging. Notice that for simple kriging, a known mean value can be given in mu.}
 	\item{mu}{Mean value for conditioning the field using simple kriging. If ordinary kriging is used, this argument is unused.}
+	\item{gpu.cache}{For conditional simulation: Use GPU memory to cache all unconditional realizations? Requires more GPU memory but less copying between CPU / GPU.}
 	\item{as.sp}{TRUE or FALSE, should result be returned as SpatialPixelsDataFrame or as an simple array?}
 	\item{check}{TRUE or FALSE, should fft of covariance matrix be checked for negative real parts?}
 	\item{benchmark}{If TRUE, detailed information about computation times of internally called functions is given.}
 	\item{prec.double}{If TRUE, double precision is used. Notice that the performance for double precision strongly depends on the available hardware.}
+	\item{compute.stats}{If TRUE, two additional realizations will be added to the output containing the pixelwise mean and standard deviations over all realizations.}
 	\item{anis}{Anisotropy argument, see ?vgm from gstat package for further information}
-
 }
 
 \details{

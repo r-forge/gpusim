@@ -1,7 +1,7 @@
  
  
  
-.sim2f <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method = 'O', mu = 0, as.sp = FALSE, check = FALSE, benchmark = FALSE, anis=c(0,0,0,1,1)) {
+.sim2f <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method = 'O', mu = 0, gpu.cache = FALSE, as.sp = FALSE, check = FALSE, benchmark = FALSE, compute.stats = FALSE, anis=c(0,0,0,1,1)) {
 	
 	if (benchmark) {
 		times = c() # runtimes of single computation steps
@@ -152,15 +152,24 @@
 		result = .C("conditioningRelease_2f", retcode = as.integer(retcode),PACKAGE="gpusim")
 		if (result$retcode != 0) stop(paste("Releasing memory for simulation returned error:" , .gpuSimCatchError(result$retcode)))
 			
-		if (as.sp == FALSE) {
-			out = as.vector(res$out)
-			dim(out) = c(nx,ny,k)
-		}
-		else {
-			out = SpatialGridDataFrame(grid,as.data.frame(matrix(res$out,ncol = k,nrow = nx*ny)))		
-			names(out@data) = paste("sim",1:k,sep="")
-		}
-			
+		out = as.vector(res$out)
+		dim(out) = c(nx,ny,k)		
+		if (compute.stats) {
+			mean_grid <- apply(out,1:(length(dim(out))-1), mean)
+			sd_grid <- apply(out,1:(length(dim(out))-1), sd)
+			out <- c(out,mean_grid,sd_grid)
+			dim(out) = c(nx,ny,k+2)
+		}		
+		if(as.sp) {
+			if (compute.stats) {
+				out = SpatialGridDataFrame(grid,as.data.frame(matrix(out,ncol = k+2,nrow = nx*ny)))	
+				names(out@data) = c(paste("sim",1:k,sep=""),"mean","sd")
+			}
+			else { 
+				out = SpatialGridDataFrame(grid,as.data.frame(matrix(out,ncol = k,nrow = nx*ny)))		
+				names(out@data) = paste("sim",1:k,sep="")
+			}
+		}			
 	}
 	else if (!missing(k) && !missing(samples)) {
 		#conditional simulation
@@ -209,7 +218,7 @@
 		res <- 0		
 		retcode = 0
 		if (benchmark) .gpuSimStartTimer()
-		result = .C("conditionalSimInit_2f", as.single(xmin), as.single(xmax), as.integer(nx), as.single(ymin),as.single(ymax), as.integer(ny), as.single(sill), as.single(range), as.single(nugget), as.single(t(coordinates(samples))), as.single(srcData), as.integer(numSrc), as.integer(.covID(covmodel)), as.single(anis[1]), as.single(anis[4]), as.integer(check), as.integer(.gpuSimKrigeMethod(kriging.method)), as.single(mu), retcode = as.integer(retcode), PACKAGE="gpusim")
+		result = .C("conditionalSimInit_2f", as.single(xmin), as.single(xmax), as.integer(nx), as.single(ymin),as.single(ymax), as.integer(ny), as.single(sill), as.single(range), as.single(nugget), as.single(t(coordinates(samples))), as.single(srcData), as.integer(numSrc), as.integer(.covID(covmodel)), as.single(anis[1]), as.single(anis[4]), as.integer(check), as.integer(.gpuSimKrigeMethod(kriging.method)), as.single(mu), as.integer(gpu.cache), retcode = as.integer(retcode), PACKAGE="gpusim")
 		if (result$retcode != 0) stop(paste("Initialization of conditional simulation returned error: ",.gpuSimCatchError(result$retcode)))
 		if (benchmark) {
 			t1 = .gpuSimStopTimer()
@@ -286,14 +295,24 @@
 		if (result$retcode != 0) stop(paste("Releasing memory for conditional simulation returned error: ",.gpuSimCatchError(result$retcode)))
 			
 
-		if (as.sp == FALSE) {
-			out = as.vector(res$out)
-			dim(out) = c(nx,ny,k)
-		}
-		else {
-			out = SpatialGridDataFrame(grid,as.data.frame(matrix(res$out,ncol = k,nrow = nx*ny)))	
-			names(out@data) = paste("sim",1:k,sep="")
-		}				
+		out = as.vector(res$out)
+		dim(out) = c(nx,ny,k)		
+		if (compute.stats) {
+			mean_grid <- apply(out,1:(length(dim(out))-1), mean)
+			sd_grid <- apply(out,1:(length(dim(out))-1), sd)
+			out <- c(out,mean_grid,sd_grid)
+			dim(out) = c(nx,ny,k+2)
+		}		
+		if(as.sp) {
+			if (compute.stats) {
+				out = SpatialGridDataFrame(grid,as.data.frame(matrix(out,ncol = k+2,nrow = nx*ny)))	
+				names(out@data) = c(paste("sim",1:k,sep=""),"mean","sd")
+			}
+			else { 
+				out = SpatialGridDataFrame(grid,as.data.frame(matrix(out,ncol = k,nrow = nx*ny)))		
+				names(out@data) = paste("sim",1:k,sep="")
+			}
+		}			
 	}
 	else if (!missing(k)) {
 		#uncond sim
@@ -331,13 +350,23 @@
 		result = .C("unconditionalSimRelease_2f", retcode = as.integer(retcode), PACKAGE="gpusim")
 		if (result$retcode != 0) stop(paste("Releasing memory for unconditional simulation returned error: ",.gpuSimCatchError(result$retcode)))
 			
-		if (as.sp == FALSE) {
-			out = as.vector(res$out)
-			dim(out) = c(nx,ny,k)
-		}
-		else {
-			out = SpatialGridDataFrame(grid,as.data.frame(matrix(res$out,ncol = k,nrow = nx*ny)))	
-			names(out@data) = paste("sim",1:k,sep="")
+		out = as.vector(res$out)
+		dim(out) = c(nx,ny,k)		
+		if (compute.stats) {
+			mean_grid <- apply(out,1:(length(dim(out))-1), mean)
+			sd_grid <- apply(out,1:(length(dim(out))-1), sd)
+			out <- c(out,mean_grid,sd_grid)
+			dim(out) = c(nx,ny,k+2)
+		}		
+		if(as.sp) {
+			if (compute.stats) {
+				out = SpatialGridDataFrame(grid,as.data.frame(matrix(out,ncol = k+2,nrow = nx*ny)))	
+				names(out@data) = c(paste("sim",1:k,sep=""),"mean","sd")
+			}
+			else { 
+				out = SpatialGridDataFrame(grid,as.data.frame(matrix(out,ncol = k,nrow = nx*ny)))		
+				names(out@data) = paste("sim",1:k,sep="")
+			}
 		}		
 	}
 	else {
