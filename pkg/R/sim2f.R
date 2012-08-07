@@ -1,7 +1,7 @@
  
  
  
-.sim2f <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method = 'O', mu = 0, gpu.cache = FALSE, as.sp = FALSE, check = FALSE, benchmark = FALSE, compute.stats = FALSE, anis=c(0,0,0,1,1)) {
+.sim2f <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method = 'O', mu = 0, aggregation.features=NULL, aggregation.func=mean, gpu.cache = FALSE, as.sp = FALSE, check = FALSE, benchmark = FALSE, compute.stats = FALSE, anis=c(0,0,0,1,1)) {
 	
 	if (benchmark) {
 		times = c() # runtimes of single computation steps
@@ -169,7 +169,11 @@
 				out = SpatialGridDataFrame(grid,as.data.frame(matrix(out,ncol = k,nrow = nx*ny)))		
 				names(out@data) = paste("sim",1:k,sep="")
 			}
-		}			
+		}
+		if (!is.null(aggregation.features) && !is.null(aggregation.func)) {
+			aggdata = over(aggregation.features,out,fn = aggregation.func)
+			out = SpatialPolygonsDataFrame(aggregation.features,as.data.frame(aggdata))
+		}
 	}
 	else if (!missing(k) && !missing(samples)) {
 		#conditional simulation
@@ -312,7 +316,11 @@
 				out = SpatialGridDataFrame(grid,as.data.frame(matrix(out,ncol = k,nrow = nx*ny)))		
 				names(out@data) = paste("sim",1:k,sep="")
 			}
-		}			
+		}	
+		if (!is.null(aggregation.features) && !is.null(aggregation.func)) {
+			aggdata = over(aggregation.features,out,fn = aggregation.func)
+			out = SpatialPolygonsDataFrame(aggregation.features,as.data.frame(aggdata))
+		}
 	}
 	else if (!missing(k)) {
 		#uncond sim
@@ -367,7 +375,11 @@
 				out = SpatialGridDataFrame(grid,as.data.frame(matrix(out,ncol = k,nrow = nx*ny)))		
 				names(out@data) = paste("sim",1:k,sep="")
 			}
-		}		
+		}	
+		if (!is.null(aggregation.features) && !is.null(aggregation.func)) {
+			aggdata = over(aggregation.features,out,fn = aggregation.func)
+			out = SpatialPolygonsDataFrame(aggregation.features,as.data.frame(aggdata))
+		}
 	}
 	else {
 		stop("Error: Missing one or more required arguments!")

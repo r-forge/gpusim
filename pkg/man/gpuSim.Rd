@@ -7,7 +7,7 @@ Performs (un)conditional simulation of gaussian random fields using NVIDIAs CUDA
 }
 
 \usage{
-gpuSim(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method='O', mu=0, gpu.cache=TRUE, as.sp=FALSE, check=FALSE, benchmark=FALSE, prec.double=FALSE, compute.stats=FALSE, anis=c(0,0,0,1,1))
+gpuSim(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method='O', mu=0, aggregation.features=NULL, aggregation.func=mean, gpu.cache=TRUE, as.sp=FALSE, check=FALSE, benchmark=FALSE, prec.double=FALSE, compute.stats=FALSE, anis=c(0,0,0,1,1))
 }
 
 \arguments{
@@ -28,6 +28,8 @@ gpuSim(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method='
 	\item{uncond}{Realizations of an unconditional simulation. Used together with \emph{samples} to condition previously computed realizations of an unconditional simulation using real sample data. The realizations can be given either as a three-dimensional array with the realization as third index or as a SpatialPixelsDataFrame object containing realizations as data fields. Note that you have to give the same covariance function which was used for generating the unconditional simulation in order to get meaningful results.}	
 	\item{kriging.method}{String identifier of the kriging method used for conditioning. Currently 's' or 'S' for simple kriging and 'o' or 'O' for ordinary kriging. Notice that for simple kriging, a known mean value can be given in mu.}
 	\item{mu}{Mean value for conditioning the field using simple kriging. If ordinary kriging is used, this argument is unused.}
+	\item{aggregation.features}{Polygon features as SpatialPolygons object for aggregating simulation values.}
+	\item{aggregation.func}{Function used for polygon aggregation (e.g. mean or sd)}
 	\item{gpu.cache}{For conditional simulation: Use GPU memory to cache all unconditional realizations? Requires more GPU memory but less copying between CPU / GPU.}
 	\item{as.sp}{TRUE or FALSE, should result be returned as SpatialPixelsDataFrame or as an simple array?}
 	\item{check}{TRUE or FALSE, should fft of covariance matrix be checked for negative real parts?}

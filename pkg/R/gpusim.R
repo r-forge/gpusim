@@ -9,7 +9,7 @@
 
 
 
-gpuSim <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method='O', mu=0, gpu.cache=TRUE, as.sp=FALSE, check=FALSE, benchmark=FALSE, prec.double=FALSE, compute.stats=FALSE, anis=c(0,0,0,1,1)) {
+gpuSim <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method='O', mu=0, aggregation.features=NULL, aggregation.func=mean, gpu.cache=TRUE, as.sp=FALSE, check=FALSE, benchmark=FALSE, prec.double=FALSE, compute.stats=FALSE, anis=c(0,0,0,1,1)) {
 	
 	if (missing(grid)) {
 		stop("Error: Missing grid argument!")
@@ -36,19 +36,33 @@ gpuSim <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, krig
 		stop("Expected 5 or 2 anisotropy values!")
 	}
 	
+	# aggregation input args check
+	if (!is.null(aggregation.features) && !is.null(aggregation.func)) {
+		if (!as.sp) {
+			warning("Notice that aggregation forces as.sp = TRUE")
+			as.sp = TRUE
+		}
+		if (class(aggregation.features) == "SpatialPolygonsDataFrame") {
+			aggregation.features = SpatialPolygons(aggregation.features@polygons)
+		}
+		if (class(aggregation.features) != "SpatialPolygons") {
+			stop("Feature aggregation requires polygon features as SpatialPolygons")
+		}
+	}
+
 	dims = length(grid@cells.dim)
 	out <- 0
 	if (dims == 2) {
 		if (prec.double) {
-			out <- .sim2d(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, gpu.cache, as.sp, check, benchmark, compute.stats, anis)
+			out <- .sim2d(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, aggregation.features, aggregation.func, gpu.cache, as.sp, check, benchmark, compute.stats, anis)
 		}
-		else out <- .sim2f(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, gpu.cache, as.sp, check, benchmark, compute.stats, anis)
+		else out <- .sim2f(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, aggregation.features, aggregation.func, gpu.cache, as.sp, check, benchmark, compute.stats, anis)
 	}
 	else if (dims == 3) {
 		if (prec.double) {
-			out <- .sim3d(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, gpu.cache, as.sp, check, benchmark, compute.stats, anis)
+			out <- .sim3d(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, aggregation.features, aggregation.func, gpu.cache, as.sp, check, benchmark, compute.stats, anis)
 		}
-		else out <- .sim3f(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, gpu.cache, as.sp, check, benchmark, compute.stats, anis)
+		else out <- .sim3f(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, aggregation.features, aggregation.func, gpu.cache, as.sp, check, benchmark, compute.stats, anis)
 	}
 	else stop("Only two- or three-dimensional simulation supported!")
 	
