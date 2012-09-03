@@ -33,12 +33,12 @@ int cur_plan_index;
 #define EXPORT
 #endif
 
-
+// C oder C++ Compiler
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-
+//alle Funktionen, die mit EXPORT gekennzeichnet sind, koennen in R ueber .C aufgerufen werden
 void EXPORT initFFT() {
 
 	for (int i=0; i<MAX_PLANS; ++i) {
@@ -51,7 +51,7 @@ void EXPORT initFFT() {
 
 void EXPORT planFFT(int *nx, int *ny, int *nz, int* use_double) {
   fft_plan *plan = (fft_plan*)malloc(sizeof(fft_plan));
-  plan->nx = *nx;
+  plan->nx = *nx; //*plan.nx = nx;
   plan->ny = *ny;
   plan->nz = *nz;
   plan->use_double = *use_double;
@@ -60,7 +60,9 @@ void EXPORT planFFT(int *nx, int *ny, int *nz, int* use_double) {
   //cudaMalloc((void**)&plan->d_data,sizeof(cufftComplex) * plan->nx * plan->ny * plan->nz);
   
   cufftType type = (*use_double)? CUFFT_Z2Z : CUFFT_C2C;
+  // if (*use_double) type=CUFFT_Z2Z else type=CUFFT_C2C
 
+  // Plan je nach Dimension
   if (plan->nz == 1 && plan->ny == 1) {
 	cufftPlan1d(&plan->cufftPlan, plan->nx, type, 1);
   }
@@ -133,7 +135,7 @@ void EXPORT execFFT(double *out, double *data, int *nx, int *ny, int *nz, int *i
 		// Copy data back to host memory
 		cudaMemcpy(h_data,d_data,sizeof(cufftDoubleComplex) * n, cudaMemcpyDeviceToHost);	
 
-
+        // komplexer Datentyp von CUDA wird in 2*n Array umgewandelt
 		for (int i = 0; i < n; ++i) {
 			out[2*i] = h_data[i].x;
 			out[2*i+1] = h_data[i].y;
@@ -141,6 +143,7 @@ void EXPORT execFFT(double *out, double *data, int *nx, int *ny, int *nz, int *i
 		free(h_data);
 		cudaFree(d_data);
 	}
+    // das gleiche fuer float
 	else {
 		cufftComplex *h_data = (cufftComplex*)malloc(sizeof(cufftComplex) * n);
 		cufftComplex *d_data;
