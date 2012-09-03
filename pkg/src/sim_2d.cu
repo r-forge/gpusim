@@ -98,6 +98,8 @@ __device__ double covSphAnisKernel_2d(double ax, double ay, double bx, double by
 }
 
 
+//Maternmodelle ohne Besselfunktionen
+
 __device__ double covMat3Kernel_2d(double ax, double ay, double bx, double by, double sill, double range, double nugget) {
 	double dist = sqrt((ax-bx)*(ax-bx)+(ay-by)*(ay-by));
 	return ((dist == 0.0f)? (nugget + sill) : (sill*(1+SQRT3*dist/range)*exp(-SQRT3*dist/range)));
@@ -297,7 +299,7 @@ __global__ void elementProduct_2d(cufftDoubleComplex *c, cufftDoubleComplex *a, 
 #endif
 
 
-
+//KRIGING KERNELS
 
 
 
@@ -530,13 +532,7 @@ __global__ void krigingSimpleAnisKernel_2d(double *prediction, double2 *srcXY, d
 	if ((bx*BLOCK_SIZE_KRIGE1 + tx)<nx*ny) prediction[bx*BLOCK_SIZE_KRIGE1 + tx] = sum + mean;	
 }
 
-
-
-
-
-
-
-
+// Postprocessing conditional simulation
 
 __global__ void addResSim_2d(double *res, double *uncond, int n) 
 {
@@ -550,10 +546,12 @@ __global__ void addResSimMean_2d(double *res, double *uncond, int n, double mean
 	if (id < n) res[id] += uncond[id] + mean;
 }
 
+//Funktionen fuer approximiertes Kriging
 
 __global__ void overlay_2d(double2 *out, double2 *xy, double grid_minx, double grid_dx, double grid_maxy, double grid_dy, int numPoints) 
 {
 	int i = blockIdx.x * blockDim.x + threadIdx.x;
+    //Return als Fliesskommazahl fuer bilineare Interpolation
 	if (i < numPoints) {
 		out[i].x = (xy[i].x - grid_minx)/grid_dx;
 		out[i].y = (grid_maxy - grid_dy - xy[i].y)/grid_dy;
@@ -561,6 +559,7 @@ __global__ void overlay_2d(double2 *out, double2 *xy, double grid_minx, double g
 }
 
 
+//fuer jede Realisierung
 __global__ void residualsOrdinary_2d(double* res, double *srcdata, double *uncond_grid, double2 *indices, int nx, int ny, int numPoints) {
 	int id = blockIdx.x * blockDim.x + threadIdx.x;
 	if (id < numPoints) {
@@ -669,6 +668,8 @@ void EXPORT unconditionalSimInit_2d(double *p_xmin, double *p_xmax, int *p_nx, d
 	
 	uncond_global_2d.nx= *p_nx; // Number of cols
 	uncond_global_2d.ny= *p_ny; // Number of rows
+     
+	//Grid wird einfach verdoppelt, nicht auf naechst 2er-Potenz erweitert
 	uncond_global_2d.n= 2*uncond_global_2d.nx; // Number of cols
 	uncond_global_2d.m= 2*uncond_global_2d.ny; // Number of rows
 	//uncond_global_2d.n = ceil2(2*uncond_global_2d.nx); /// 
@@ -863,7 +864,8 @@ void EXPORT unconditionalSimRealizations_2d(double *p_out,  int *p_k, int *ret_c
 
 	curandCreateGenerator(&curandGen, CURAND_RNG_PSEUDO_DEFAULT);
 	curandSetPseudoRandomGeneratorSeed(curandGen,(unsigned long long)(time(NULL)));	
-
+    
+    //Realisierungen in Schleife, d.h. lineare Laufzeit in Bezug auf Realisierungen
 	for(int l = 0; l<k; ++l) {
 		
 		if(l==0){			
@@ -995,7 +997,7 @@ extern "C" {
 
 
 
-
+//int *uncond_gpucache: wenn true, dann wird auf der GPU gespeichert (alte Implementierung), wenn false, dann Schleife
 
 void EXPORT conditionalSimInit_2d(double *p_xmin, double *p_xmax, int *p_nx, double *p_ymin, double *p_ymax, 
 								  int *p_ny, double *p_sill, double *p_range, double *p_nugget, double *p_srcXY, 
@@ -1178,8 +1180,11 @@ void EXPORT conditionalSimUncondResiduals_2d(double *p_out, int *p_k, int *ret_c
 	if (cudaStatus != cudaSuccess)  printf("cudaMalloc returned error code %d\n", cudaStatus);
 	cudaMalloc((void**)&d_amp,sizeof(cufftDoubleComplex)*cond_global_2d.n*cond_global_2d.m);
 	cudaMalloc((void**)&cond_global_2d.d_uncond,sizeof(double)*cond_global_2d.nx*cond_global_2d.ny * cond_global_2d.k);
-	
-	// GPU OR CPU CACHING OF UNCOND REALIZATIONS
+
+	/********************************************************
+	GPU OR CPU CACHING OF UNCOND REALIZATIONS
+    *********************************************************/
+
 	if (cond_global_2d.uncond_gpucache) {
 		cudaMalloc((void**)&cond_global_2d.d_uncond,sizeof(double)*cond_global_2d.nx*cond_global_2d.ny * cond_global_2d.k); // Hold all uncond realizations in GPU memory
 	}
@@ -1189,7 +1194,7 @@ void EXPORT conditionalSimUncondResiduals_2d(double *p_out, int *p_k, int *ret_c
 	}
 
 
-	
+	//Lagrange Multiplikatoren
 	if (cond_global_2d.krige_method == ORDINARY) {
 		cudaMalloc((void**)&d_residuals,sizeof(double)* (cond_global_2d.numSrc + 1));
 	}
@@ -1218,6 +1223,8 @@ void EXPORT conditionalSimUncondResiduals_2d(double *p_out, int *p_k, int *ret_c
 		dim3 blockCount2dhalf = dim3(cond_global_2d.nx/blockSize2dhalf.x,cond_global_2d.ny/blockSize2dhalf.y);
 		if (cond_global_2d.nx % blockSize2dhalf.x != 0) ++blockCount2dhalf.x;
 		if (cond_global_2d.ny % blockSize2dhalf.y != 0) ++blockCount2dhalf.y;
+
+        //GPU cache TRUE/FALSE
 		
 		if (cond_global_2d.uncond_gpucache) {
 			ReDiv_2d<<<blockCount2dhalf, blockSize2dhalf>>>(cond_global_2d.d_uncond + l*cond_global_2d.nx*cond_global_2d.ny, d_amp, std::sqrt((double)(cond_global_2d.n*cond_global_2d.m)), cond_global_2d.nx, cond_global_2d.ny, cond_global_2d.n);
@@ -1226,8 +1233,10 @@ void EXPORT conditionalSimUncondResiduals_2d(double *p_out, int *p_k, int *ret_c
 			ReDiv_2d<<<blockCount2dhalf, blockSize2dhalf>>>(cond_global_2d.d_uncond, d_amp, std::sqrt((double)(cond_global_2d.n*cond_global_2d.m)), cond_global_2d.nx, cond_global_2d.ny, cond_global_2d.n);
 		}
 		
+        //Brauchen wir diese Thread-Synchronisation? Wahrscheinlich nicht.
+		cudaStatus = cudaThreadSynchronize();
 
-		cudaStatus = cudaThreadSynchronize();	
+
 		if (cudaStatus != cudaSuccess) printf("cudaThreadSynchronize returned error code %d after launching ReDiv_2d!\n", cudaStatus);
 		
 		// d_uncond is now a unconditional realization 
@@ -1298,8 +1307,7 @@ void EXPORT conditionalSimKrigeResiduals_2d(double *p_out, double *p_y, int *ret
 		
 		cudaMemcpy(d_y, p_y + l*(cond_global_2d.numSrc + 1), sizeof(double) * (cond_global_2d.numSrc + 1),cudaMemcpyHostToDevice);		
 		
-		// Kriging prediction
-		
+		// Kriging prediction		
 
 		if (cond_global_2d.isotropic)
 			krigingKernel_2d<<<blockCntKrige, blockSizeKrige>>>(d_respred,cond_global_2d.d_samplexy,cond_global_2d.xmin,cond_global_2d.dx,cond_global_2d.ymin,cond_global_2d.dy,d_y,cond_global_2d.covmodel,cond_global_2d.range,cond_global_2d.sill,cond_global_2d.nugget,cond_global_2d.numSrc,cond_global_2d.nx,cond_global_2d.ny);
@@ -1625,7 +1633,7 @@ extern "C" {
 	}
 
 
-
+    //Nicht implementiert fuer 3D.
 
 	void EXPORT conditioningSimpleKrigeResiduals_2d(double *p_out, double *p_y, int *ret_code) {
 		*ret_code = OK;
