@@ -2,7 +2,7 @@
  
  gpuDeviceInfo <- function() {
 	cat("\n******** GPU DEVICE INFO ********\n")
-	result = .C("deviceInfo", out=format("",width=255),PACKAGE="gpusim")
+	result = .C("deviceInfo", out=format("",width=512),PACKAGE="gpusim")
 	cat(result$out)	
 	cat("*********************************\n\n")
  }

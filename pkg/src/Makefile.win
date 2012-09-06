@@ -1,4 +1,4 @@
-OBJ_FILES = sim_2f.obj sim_2d.obj sim_3d.obj sim_3f.obj fft.obj utils.obj
+OBJ_FILES = sim_2f.obj sim_2d.obj sim_3d.obj sim_3f.obj fft.obj utils.obj dist.obj
 DLLOUT = gpusim.dll
 
 
@@ -49,6 +49,9 @@ utils.obj: utils.cpp
 	
 fft.obj: fft.cu
 	nvcc -c fft.cu -o fft.obj -I"$(CUDA_INC_PATH)" $(NVCC_FLAGS)
+	
+dist.obj: dist.cu
+	nvcc -c dist.cu -o dist.obj -I"$(CUDA_INC_PATH)" $(NVCC_FLAGS)
 	
 clean:
 	rm $(OBJ_FILES) *.linkinfo gpusim.exp gpusim.lib gpusim.dll
