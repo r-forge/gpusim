@@ -12,7 +12,7 @@ Computes the sum of squared differences of an array using the GPU.
 
 \arguments{
 	\item{a}{the first array}
-	\item{a}{the second array}
+	\item{b}{the second array}
 }
 
 \value{The sum of squared differences of a and b.}
