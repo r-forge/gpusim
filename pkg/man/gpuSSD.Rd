@@ -1,5 +1,5 @@
-\name{gpudist}
-\alias{gpudist}
+\name{gpuSSD}
+\alias{gpuSSD}
 \title{Sum of squared differences on GPUs}
 
 \description{
@@ -7,7 +7,7 @@ Computes the sum of squared differences of an array using the GPU.
 }
 
 \usage{
-	gpudist(a,b) 
+	gpuSSD(a,b) 
 }
 
 \arguments{
@@ -35,9 +35,7 @@ data = data[,,1:10]
 i = 4
 j = 5
 sum((data[,,i] - data[,,j])^2) # for comparison
-gpudist(data[,,i],data[,,j])
+gpuSSD(data[,,i],data[,,j])
 }
 
-\keyword{random fields}
-\keyword{covariance}
 
