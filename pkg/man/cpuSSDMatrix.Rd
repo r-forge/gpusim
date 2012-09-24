@@ -19,7 +19,7 @@ Computes the pairwise sum of squared differences of an image stack in a three-di
 \author{Marius Appel \email{marius.appel@uni-muenster.de}}
 
 \examples{
-# load a NetCDF file and compute a ssd value of two images
+# load a NetCDF file and compute ssd matrix between all image pairs
 library(ncdf)
 library(gpusim)
 

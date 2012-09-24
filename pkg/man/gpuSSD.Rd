@@ -20,7 +20,7 @@ Computes the sum of squared differences of an array using the GPU.
 \author{Marius Appel \email{marius.appel@uni-muenster.de}}
 
 \examples{
-# load a NetCDF file and compute a ssd value of two images
+# load a NetCDF file and compute an ssd value of two images
 library(ncdf)
 library(gpusim)
 
