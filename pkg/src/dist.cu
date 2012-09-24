@@ -78,7 +78,20 @@ void EXPORT gpuDist(double *res, double *a, double *b, int* n) {
 }
 
 
+void EXPORT cpuDistMatrix(double *res, double *a, int *nx, int*ny, int*nz) {
+	//double *out = (double*)malloc(sizeof(double)*(*nz)*(*nz));
 
+	for (int i=0;i<*nz; ++i) {
+		for (int j=i; j<*nz; ++j) {
+			res[i*(*nz)+j] = 0.0;
+			if (i == j) continue;
+			for (int k=0; k<(*nx * (*ny)); ++k) {
+				res[i*(*nz)+j] += (a[i*(*nx)*(*ny) + k] -  a[j*(*nx)*(*ny) + k]) * (a[i*(*nx)*(*ny) + k] -  a[j*(*nx)*(*ny) + k]); 
+			}
+			res[j*(*nz)+i] = res[i*(*nz)+j];
+		}
+	}
+}
 
 
 
