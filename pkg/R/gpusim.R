@@ -9,7 +9,7 @@
 
 
 
-gpuSim <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method='O', mu=0, aggregation.features=NULL, aggregation.func=mean, gpu.cache=TRUE, as.sp=FALSE, check=FALSE, benchmark=FALSE, prec.double=FALSE, compute.stats=FALSE, anis=c(0,0,0,1,1)) {
+gpuSim <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method='S', mu=0, aggregation.features=NULL, aggregation.func=mean, gpu.cache=TRUE, as.sp=FALSE, check=FALSE, benchmark=FALSE, prec.double=FALSE, compute.stats=FALSE, anis=c(0,0,0,1,1)) {
 	
 	if (missing(grid)) {
 		stop("Error: Missing grid argument!")
@@ -35,6 +35,12 @@ gpuSim <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, krig
 	if (length(anis) != 5) {
 		stop("Expected 5 or 2 anisotropy values!")
 	}
+	
+	if(kriging.method == 'O' || kriging.method == 'o') {
+		warning("Implementation of conditioning by ordinary kriging is currently still beeing tested. Results might contain errors!")
+	}
+	
+	
 	
 	# aggregation input args check
 	if (!is.null(aggregation.features) && !is.null(aggregation.func)) {
