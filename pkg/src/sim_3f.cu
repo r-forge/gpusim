@@ -368,7 +368,7 @@ __global__ void overlay_3f(float3 *out, float3 *xy, float grid_minx, float grid_
 	int i = blockIdx.x * blockDim.x + threadIdx.x;
 	if (i < numPoints) {
 		out[i].x = (xy[i].x - grid_minx)/grid_dx;
-		out[i].y = (grid_maxy - grid_dy - xy[i].y)/grid_dy;
+		out[i].y = (grid_maxy - xy[i].y)/grid_dy;
 		out[i].z = (xy[i].z - grid_minz)/grid_dz;
 	}
 }
@@ -809,10 +809,10 @@ void EXPORT unconditionalSimInit_3f(float *p_xmin, float *p_xmax, int *p_nx, flo
 	for (int k=0; k<uncond_global_3f.o; ++k) {
 		for (int i=0; i<uncond_global_3f.n; ++i) { // i =  col index
 			for (int j=0; j<uncond_global_3f.m; ++j) { // j = row index 
-				h_grid_c[k*uncond_global_3f.n*uncond_global_3f.m + j*uncond_global_3f.n + i].x =  *p_xmin + (i+1) * uncond_global_3f.dx; 
+				h_grid_c[k*uncond_global_3f.n*uncond_global_3f.m + j*uncond_global_3f.n + i].x =  *p_xmin + i * uncond_global_3f.dx; 
 				//h_grid_c[k*uncond_global_3f.n*uncond_global_3f.m + j*uncond_global_3f.n + i].y =  *p_ymin + (j+1) * uncond_global_3f.dy;
 				h_grid_c[k*uncond_global_3f.n*uncond_global_3f.m + j*uncond_global_3f.n + i].y =  *p_ymin + (uncond_global_3f.m-1-j)* uncond_global_3f.dy;
-				h_grid_c[k*uncond_global_3f.n*uncond_global_3f.m + j*uncond_global_3f.n + i].z =  *p_zmin + (k+1) * uncond_global_3f.dz; 
+				h_grid_c[k*uncond_global_3f.n*uncond_global_3f.m + j*uncond_global_3f.n + i].z =  *p_zmin + k * uncond_global_3f.dz; 
 			}
 		}
 	}
@@ -1186,10 +1186,10 @@ void EXPORT conditionalSimInit_3f(float *p_xmin, float *p_xmax, int *p_nx, float
 	for (int k=0; k<cond_global_3f.o; ++k) {
 		for (int i=0; i<cond_global_3f.n; ++i) { // i =  col index
 			for (int j=0; j<cond_global_3f.m; ++j) { // j = row index 
-				h_grid_c[k*cond_global_3f.n*cond_global_3f.m + j*cond_global_3f.n + i].x =  *p_xmin + (i+1) * cond_global_3f.dx; 
+				h_grid_c[k*cond_global_3f.n*cond_global_3f.m + j*cond_global_3f.n + i].x =  *p_xmin + i * cond_global_3f.dx; 
 				//h_grid_c[k*cond_global_3f.n*cond_global_3f.m + j*cond_global_3f.n + i].y =  *p_ymin + (j+1) * cond_global_3f.dy;
 				h_grid_c[k*cond_global_3f.n*cond_global_3f.m + j*cond_global_3f.n + i].y =  *p_ymin + (cond_global_3f.m-1-j)* cond_global_3f.dy;
-				h_grid_c[k*cond_global_3f.n*cond_global_3f.m + j*cond_global_3f.n + i].z =  *p_zmin + (k+1) * cond_global_3f.dz; 
+				h_grid_c[k*cond_global_3f.n*cond_global_3f.m + j*cond_global_3f.n + i].z =  *p_zmin + k * cond_global_3f.dz; 
 			}
 		}
 	}
@@ -1428,7 +1428,7 @@ void EXPORT conditionalSimKrigeResiduals_3f(float *p_out, float *p_y, int *ret_c
 	
 	dim3 blockSizeCond = dim3(256);
 	dim3 blockCntCond = dim3(cond_global_3f.nx*cond_global_3f.ny*cond_global_3f.nz/ blockSizeCond.x);
-	if (cond_global_3f.nx*cond_global_3f.ny*cond_global_3f.nz % blockSizeCond.x != 0) ++blockSizeCond.x;
+	if (cond_global_3f.nx*cond_global_3f.ny*cond_global_3f.nz % blockSizeCond.x != 0) ++blockCntCond.x;
 
 	for(int l = 0; l<cond_global_3f.k; ++l) {
 						
@@ -1483,7 +1483,7 @@ void EXPORT conditionalSimSimpleKrigeResiduals_3f(float *p_out, float *p_y, int 
 	
 	dim3 blockSizeCond = dim3(256);
 	dim3 blockCntCond = dim3(cond_global_3f.nx*cond_global_3f.ny*cond_global_3f.nz/ blockSizeCond.x);
-	if (cond_global_3f.nx*cond_global_3f.ny*cond_global_3f.nz % blockSizeCond.x != 0) ++blockSizeCond.x;
+	if (cond_global_3f.nx*cond_global_3f.ny*cond_global_3f.nz % blockSizeCond.x != 0) ++blockCntCond.x;
 
 	for(int l = 0; l<cond_global_3f.k; ++l) {
 						

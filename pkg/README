@@ -7,4 +7,4 @@ TO DO:
 - Check, if DUP=TRUE is necessary in dCov2d,dCov3d
 - documentation anisotropy argument
 - rewrite vignette
-- implement usefule masking and aggregation functions
+- implement useful masking and aggregation functions

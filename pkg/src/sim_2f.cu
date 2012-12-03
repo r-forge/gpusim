@@ -561,7 +561,7 @@ __global__ void overlay_2f(float2 *out, float2 *xy, float grid_minx, float grid_
 	int i = blockIdx.x * blockDim.x + threadIdx.x;
 	if (i < numPoints) {
 		out[i].x = (xy[i].x - grid_minx)/grid_dx;
-		out[i].y = (grid_maxy - grid_dy - xy[i].y)/grid_dy;
+		out[i].y = (grid_maxy - xy[i].y)/grid_dy;
 	}
 }
 
@@ -700,7 +700,7 @@ void EXPORT unconditionalSimInit_2f(float *p_xmin, float *p_xmax, int *p_nx, flo
 	cufftComplex *h_grid_c = (cufftComplex*)malloc(sizeof(cufftComplex)*uncond_global_2f.m*uncond_global_2f.n);
 	for (int i=0; i<uncond_global_2f.n; ++i) { // i =  col index
 		for (int j=0; j<uncond_global_2f.m; ++j) { // j = row index 
-			h_grid_c[j*uncond_global_2f.n+i].x = *p_xmin + (i+1) * uncond_global_2f.dx; 
+			h_grid_c[j*uncond_global_2f.n+i].x = *p_xmin + i * uncond_global_2f.dx; 
 			//h_grid_c[j*uncond_global_2f.n+i].y = *p_ymin + (j+1) * uncond_global_2f.dy;  
 			h_grid_c[j*uncond_global_2f.n+i].y = *p_ymin + (uncond_global_2f.m-1-j)* uncond_global_2f.dy;			
 		}
@@ -1047,7 +1047,7 @@ void EXPORT conditionalSimInit_2f(float *p_xmin, float *p_xmax, int *p_nx, float
 	cufftComplex *h_grid_c = (cufftComplex*)malloc(sizeof(cufftComplex)*cond_global_2f.m*cond_global_2f.n);
 	for (int i=0; i<cond_global_2f.n; ++i) { // i = col index
 		for (int j=0; j<cond_global_2f.m; ++j) { // j = row index
-			h_grid_c[j*cond_global_2f.n+i].x = *p_xmin + (i+1) * cond_global_2f.dx; 
+			h_grid_c[j*cond_global_2f.n+i].x = *p_xmin + i * cond_global_2f.dx; 
 			//h_grid_c[j*cond_global_2f.n+i].y = *p_ymin + (j+1) * cond_global_2f.dy; 
 			h_grid_c[j*cond_global_2f.n+i].y = *p_ymin + (cond_global_2f.m-1-j)* cond_global_2f.dy;
 		}
@@ -1283,7 +1283,7 @@ void EXPORT conditionalSimKrigeResiduals_2f(float *p_out, float *p_y, int *ret_c
 	
 	dim3 blockSizeCond = dim3(256);
 	dim3 blockCntCond = dim3(cond_global_2f.nx*cond_global_2f.ny/ blockSizeCond.x);
-	if (cond_global_2f.nx*cond_global_2f.ny % blockSizeCond.x != 0) ++blockSizeCond.x;
+	if (cond_global_2f.nx*cond_global_2f.ny % blockSizeCond.x != 0) ++blockCntCond.x;
 
 	for(int l = 0; l<cond_global_2f.k; ++l) {
 						
@@ -1337,7 +1337,7 @@ void EXPORT conditionalSimSimpleKrigeResiduals_2f(float *p_out, float *p_y, int 
 	
 	dim3 blockSizeCond = dim3(256);
 	dim3 blockCntCond = dim3(cond_global_2f.nx*cond_global_2f.ny/ blockSizeCond.x);
-	if (cond_global_2f.nx*cond_global_2f.ny % blockSizeCond.x != 0) ++blockSizeCond.x;
+	if (cond_global_2f.nx*cond_global_2f.ny % blockSizeCond.x != 0) ++blockCntCond.x;
 
 	for(int l = 0; l<cond_global_2f.k; ++l) {
 						
@@ -1575,7 +1575,7 @@ extern "C" {
 
 		dim3 blockSizeCond = dim3(256);
 		dim3 blockCntCond = dim3(conditioning_global_2f.nx*conditioning_global_2f.ny/ blockSizeCond.x);
-		if (conditioning_global_2f.nx*conditioning_global_2f.ny % blockSizeCond.x != 0) ++blockSizeCond.x;
+		if (conditioning_global_2f.nx*conditioning_global_2f.ny % blockSizeCond.x != 0) ++blockCntCond.x;
 
 		for(int l = 0; l<cond_global_2f.k; ++l) {
 			cudaMemcpy(d_y, p_y + l*(conditioning_global_2f.numSrc + 1), sizeof(float) * (conditioning_global_2f.numSrc + 1),cudaMemcpyHostToDevice);		
@@ -1620,7 +1620,7 @@ extern "C" {
 
 		dim3 blockSizeCond = dim3(256);
 		dim3 blockCntCond = dim3(conditioning_global_2f.nx*conditioning_global_2f.ny/ blockSizeCond.x);
-		if (conditioning_global_2f.nx*conditioning_global_2f.ny % blockSizeCond.x != 0) ++blockSizeCond.x;
+		if (conditioning_global_2f.nx*conditioning_global_2f.ny % blockSizeCond.x != 0) ++blockCntCond.x;
 
 		for(int l = 0; l<cond_global_2f.k; ++l) {
 			cudaMemcpy(d_y, p_y + l*conditioning_global_2f.numSrc, sizeof(float) * conditioning_global_2f.numSrc,cudaMemcpyHostToDevice);		

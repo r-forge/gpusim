@@ -46,9 +46,9 @@
 		nx = grid@cells.dim[1]
 		ny = grid@cells.dim[2]
 		nz = grid@cells.dim[3]
-		xmax = xmin + nx * dx
-		ymax = ymin + ny * dy	
-		zmax = zmin + nz * dz		
+		xmax = xmin + (nx-1) * dx
+		ymax = ymin + (ny-1) * dy	
+		zmax = zmin + (nz-1) * dz		
 	
 		if (benchmark) .gpuSimStartTimer()	
 		numSrc = length(samples)	
@@ -184,9 +184,9 @@
 		nx = grid@cells.dim[1]
 		ny = grid@cells.dim[2]
 		nz = grid@cells.dim[3]
-		xmax = xmin + nx * dx
-		ymax = ymin + ny * dy	
-		zmax = zmin + nz * dz	
+		xmax = xmin + (nx-1) * dx
+		ymax = ymin + (ny-1) * dy	
+		zmax = zmin + (nz-1) * dz	
 		
 		
 		retcode = 0
