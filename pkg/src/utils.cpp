@@ -65,6 +65,7 @@ void EXPORT initSim(int *result) {
 			printf("cudaSetDevice returned error code %d\n", cudaStatus);
 			*result = ERROR_NO_DEVICE;
 		}
+		cublasInit();
 		*result = OK;
 	}
 

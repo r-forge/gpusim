@@ -1,7 +1,7 @@
  
  
  
-.sim2f <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method = 'S', mu = 0, aggregation.features=NULL, aggregation.func=mean, gpu.cache = FALSE, as.sp = FALSE, check = FALSE, benchmark = FALSE, compute.stats = FALSE, anis=c(0,0,0,1,1)) {
+.sim2f <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method = 'O', mu = 0, aggregation.features=NULL, aggregation.func=mean, gpu.cache = FALSE, as.sp = FALSE, check = FALSE, benchmark = FALSE, compute.stats = FALSE, anis=c(0,0,0,1,1), cpu.invertonly = FALSE) {
 	
 	if (benchmark) {
 		times = c() # runtimes of single computation steps
@@ -11,7 +11,8 @@
 	
 	if (!missing(uncond) && !missing(samples)) {
 		#only conditioning, k is ignored and derived from uncond object
-		
+		cat("Performing two-dimensional conditioning single precision...")
+		cat("\n")
 		if (class(samples) != "SpatialPointsDataFrame") {
 			stop("Error: samples must be of type SpatialPointsDataFrame")
 		}
@@ -72,7 +73,7 @@
 		retcode = 0
 		if (benchmark) .gpuSimStartTimer()
 		
-		result = .C("conditioningInit_2f", as.single(xmin), as.single(xmax), as.integer(nx), as.single(ymin),as.single(ymax), as.integer(ny), as.single(sill), as.single(range), as.single(nugget), as.single(t(coordinates(samples))), as.single(srcData), as.integer(numSrc),  as.integer(k), as.single(uncond), as.integer(.covID(covmodel)), as.single(anis[1]), as.single(anis[4]), as.integer(.gpuSimKrigeMethod(kriging.method)), as.single(mu), retcode = as.integer(retcode),PACKAGE="gpusim")
+		result = .C("conditioningInit_2f", as.single(xmin), as.single(xmax), as.integer(nx), as.single(ymin),as.single(ymax), as.integer(ny), as.single(sill), as.single(range), as.single(nugget), as.single(t(coordinates(samples))), as.single(srcData), as.integer(numSrc),  as.integer(k), as.single(uncond), as.integer(.covID(covmodel)), as.single(anis[1]), as.single(anis[4]), as.integer(.gpuSimKrigeMethod(kriging.method)), as.single(mu), as.integer(cpu.invertonly), retcode = as.integer(retcode),PACKAGE="gpusim")
 		if (result$retcode != 0) stop(paste("Initialization of conditioning returned error:",.gpuSimCatchError(result$retcode)))
 		
 		if (benchmark) {
@@ -98,7 +99,13 @@
 			
 			# solve residual equation system
 			dim(res$out) = c(numSrc+1,k)
-			y = solve(cov.l, res$out)				
+			y <- 0
+			if (cpu.invertonly) {
+				y = solve(cov.l)
+			}
+			else {
+				y = solve(cov.l, res$out)	
+			}					
 			
 			if (benchmark) {
 				t1 = .gpuSimStopTimer()
@@ -131,7 +138,13 @@
 			# solve residual equation system
 			if (benchmark) .gpuSimStartTimer()	
 			dim(res$out) = c(numSrc,k)
-			y = solve(cov.l, res$out)				
+			y <- 0
+			if (cpu.invertonly) {
+				y = solve(cov.l)
+			}
+			else {
+				y = solve(cov.l, res$out)	
+			}					
 			if (benchmark) {
 				t1 = .gpuSimStopTimer()
 				names(t1) = "CPU Solving Residual Equation System"
@@ -177,7 +190,8 @@
 	}
 	else if (!missing(k) && !missing(samples)) {
 		#conditional simulation
-	
+		cat("Performing two-dimensional conditional simulation in single precision...")
+		cat("\n")
 		if (class(samples) != "SpatialPointsDataFrame") {
 			stop("Error: samples must be of type SpatialPointsDataFrame")
 		}
@@ -222,7 +236,7 @@
 		res <- 0		
 		retcode = 0
 		if (benchmark) .gpuSimStartTimer()
-		result = .C("conditionalSimInit_2f", as.single(xmin), as.single(xmax), as.integer(nx), as.single(ymin),as.single(ymax), as.integer(ny), as.single(sill), as.single(range), as.single(nugget), as.single(t(coordinates(samples))), as.single(srcData), as.integer(numSrc), as.integer(.covID(covmodel)), as.single(anis[1]), as.single(anis[4]), as.integer(check), as.integer(.gpuSimKrigeMethod(kriging.method)), as.single(mu), as.integer(gpu.cache), retcode = as.integer(retcode), PACKAGE="gpusim")
+		result = .C("conditionalSimInit_2f", as.single(xmin), as.single(xmax), as.integer(nx), as.single(ymin),as.single(ymax), as.integer(ny), as.single(sill), as.single(range), as.single(nugget), as.single(t(coordinates(samples))), as.single(srcData), as.integer(numSrc), as.integer(.covID(covmodel)), as.single(anis[1]), as.single(anis[4]), as.integer(check), as.integer(.gpuSimKrigeMethod(kriging.method)), as.single(mu), as.integer(gpu.cache), as.integer(cpu.invertonly), retcode = as.integer(retcode), PACKAGE="gpusim")
 		if (result$retcode != 0) stop(paste("Initialization of conditional simulation returned error: ",.gpuSimCatchError(result$retcode)))
 		if (benchmark) {
 			t1 = .gpuSimStopTimer()
@@ -234,7 +248,12 @@
 		if (any(c('O','o') == kriging.method)) {	
 			# generate all unconditional realizations and get their residuals to the data
 			if (benchmark) .gpuSimStartTimer()	
-			res = .C("conditionalSimUncondResiduals_2f", out=single((numSrc + 1) * k), as.integer(k),retcode = as.integer(retcode), PACKAGE="gpusim")
+			if (cpu.invertonly) {
+				res = .C("conditionalSimUncondResiduals_2f",out=single((numSrc + 1) * k), as.integer(k),retcode = as.integer(retcode), PACKAGE="gpusim")
+			}
+			else {
+				res = .C("conditionalSimUncondResiduals_2f", out=single((numSrc + 1) * k), as.integer(k),retcode = as.integer(retcode), PACKAGE="gpusim")
+			}			
 			if (res$retcode != 0) stop(paste("Computation of residuals between generated unconditional realizations and given data returned error: ",.gpuSimCatchError(res$retcode)))		
 			if (benchmark) {
 				t1 = .gpuSimStopTimer()
@@ -244,14 +263,20 @@
 			
 			# solve residual equation system
 			if (benchmark) .gpuSimStartTimer()	
-			dim(res$out) = c(numSrc+1,k)
-			y = solve(cov.l, res$out)				
+			
+			y <- 0
+			if (cpu.invertonly) {
+				y <- solve(cov.l)
+			}
+			else {
+				dim(res$out) = c(numSrc+1,k)
+				y <- solve(cov.l, res$out)	
+			}				
 			if (benchmark) {
 				t1 = .gpuSimStopTimer()
 				names(t1) = "CPU Solving Residual Equation System"
 				times = c(times,t1)
 			}
-			
 			# interpolate residuals and add to the unconditional realizations		
 			if (benchmark) .gpuSimStartTimer()	
 			res = .C("conditionalSimKrigeResiduals_2f", out=single(nx*ny*k), as.single(y), retcode = as.integer(retcode), PACKAGE="gpusim")
@@ -276,7 +301,13 @@
 			# solve residual equation system
 			if (benchmark) .gpuSimStartTimer()
 			dim(res$out) = c(numSrc,k)
-			y = solve(cov.l, res$out)			
+			y <- 0
+			if (cpu.invertonly) {
+				y = solve(cov.l)
+			}
+			else {
+				y = solve(cov.l, res$out)	
+			}				
 			if (benchmark) {
 				t1 = .gpuSimStopTimer()
 				names(t1) = "CPU Solving Residual Equation System"
@@ -324,7 +355,9 @@
 	}
 	else if (!missing(k)) {
 		#uncond sim
-
+		cat("Performing two-dimensional unconditional simulation in single precision...")
+		cat("\n")
+		
 		xmin = grid@cellcentre.offset[1]
 		ymin = grid@cellcentre.offset[2]
 		dx = grid@cellsize[1]

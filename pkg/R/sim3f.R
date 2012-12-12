@@ -4,7 +4,7 @@
  
  
  
- .sim3f <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method = 'S', mu = 0, aggregation.features=NULL, aggregation.func=mean, gpu.cache = FALSE, as.sp = FALSE, check = FALSE, benchmark = FALSE, compute.stats = FALSE, anis=c(0,0,0,1,1)) {
+ .sim3f <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method = 'O', mu = 0, aggregation.features=NULL, aggregation.func=mean, gpu.cache = FALSE, as.sp = FALSE, check = FALSE, benchmark = FALSE, compute.stats = FALSE, anis=c(0,0,0,1,1)) {
 	
 	if (benchmark) {
 		times = c() # runtimes of single computation steps
@@ -23,7 +23,9 @@
 	}
 	else if (!missing(k) && !missing(samples)) {
 		#conditional simulation
-	
+		cat("Performing three-dimensional conditional simulation in single precision...")
+		cat("\n")
+		
 		if (class(samples) != "SpatialPointsDataFrame") {
 			stop("Error: samples must be of type SpatialPointsDataFrame")
 		}
@@ -95,7 +97,13 @@
 			# solve residual equation system
 			if (benchmark) .gpuSimStartTimer()	
 			dim(res$out) = c(numSrc+1,k)
-			y = solve(cov.l, res$out)				
+			y <- 0
+			if (cpu.invertonly) {
+				y = solve(cov.l)
+			}
+			else {
+				y = solve(cov.l, res$out)	
+			}				
 			if (benchmark) {
 				t1 = .gpuSimStopTimer()
 				names(t1) = "CPU Solving Residual Equation System"
@@ -126,7 +134,13 @@
 			# solve residual equation system
 			if (benchmark) .gpuSimStartTimer()
 			dim(res$out) = c(numSrc,k)
-			y = solve(cov.l, res$out)			
+			y <- 0
+			if (cpu.invertonly) {
+				y = solve(cov.l)
+			}
+			else {
+				y = solve(cov.l, res$out)	
+			}				
 			if (benchmark) {
 				t1 = .gpuSimStopTimer()
 				names(t1) = "CPU Solving Residual Equation System"
@@ -174,7 +188,9 @@
 	}
 	else if (!missing(k)) {
 		#uncond sim
-
+		cat("Performing three-dimensional unconditional simulation in single precision...")
+		cat("\n")
+		
 		xmin = grid@cellcentre.offset[1]
 		ymin = grid@cellcentre.offset[2]
 		zmin = grid@cellcentre.offset[3]
@@ -192,7 +208,7 @@
 		retcode = 0
 		
 		if (benchmark) .gpuSimStartTimer()
-		result = .C("unconditionalSimInit_3f", as.single(xmin), as.single(xmax), as.integer(nx), as.single(ymin),as.single(ymax), as.integer(ny), as.single(zmin), as.single(zmax), as.integer(nz), as.single(sill), as.single(range), as.single(nugget), as.integer(.covID(covmodel)), as.single(anis), as.integer(check), retcode = as.integer(retcode), PACKAGE="gpusim")
+		result = .C("unconditionalSimInit_3f", as.single(xmin), as.single(xmax), as.integer(nx), as.single(ymin),as.single(ymax), as.integer(ny), as.single(zmin), as.single(zmax), as.integer(nz), as.single(sill), as.single(range), as.single(nugget), as.integer(.covID(covmodel)), as.single(anis), as.integer(check), as.integer(cpu.invertonly), retcode = as.integer(retcode), PACKAGE="gpusim")
 		if (result$retcode != 0) stop(paste("Initialization of unconditional simulation returned error: ",.gpuSimCatchError(result$retcode)))			
 		if (benchmark) {
 			t1 = .gpuSimStopTimer()

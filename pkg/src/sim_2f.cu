@@ -962,12 +962,14 @@ struct cond_state_2f {
 	float *d_sampledata; // data values of samples
 	//float *d_covinv; // inverse covariance matrix of samples
 	float *d_uncond;
+	float *d_residuals;
 	float *h_uncond; //cpu uncond cache
 	bool uncond_gpucache;
 	int covmodel;
 	int k;
 	float mu; // known mean for simple kriging
 	int krige_method;
+	bool cpu_invert_only;
 } cond_global_2f;
 
 
@@ -990,10 +992,9 @@ extern "C" {
 
 void EXPORT conditionalSimInit_2f(float *p_xmin, float *p_xmax, int *p_nx, float *p_ymin, float *p_ymax, int *p_ny, float *p_sill, 
 								  float *p_range, float *p_nugget, float *p_srcXY, float *p_srcData, int *p_numSrc, int *p_covmodel, 
-								  float *p_anis_direction, float *p_anis_ratio, int *do_check, int *krige_method, float *mu, int *uncond_gpucache, int *ret_code) {
+								  float *p_anis_direction, float *p_anis_ratio, int *do_check, int *krige_method, float *mu, int *uncond_gpucache, int *cpuinvertonly, int *ret_code) {
 	*ret_code = OK;
 	cudaError_t cudaStatus;
-	cublasInit();
 
 	cond_global_2f.nx= *p_nx; // Number of cols
 	cond_global_2f.ny= *p_ny; // Number of rows
@@ -1011,6 +1012,7 @@ void EXPORT conditionalSimInit_2f(float *p_xmin, float *p_xmax, int *p_nx, float
 	cond_global_2f.nugget = *p_nugget;
 	cond_global_2f.covmodel = *p_covmodel;
 	cond_global_2f.krige_method = *krige_method;
+	cond_global_2f.cpu_invert_only =  (*cpuinvertonly != 0);
 	if (cond_global_2f.krige_method == SIMPLE)
 		cond_global_2f.mu = *mu;
 	else cond_global_2f.mu = 0;
@@ -1159,7 +1161,7 @@ void EXPORT conditionalSimUncondResiduals_2f(float *p_out, int *p_k, int *ret_co
 	curandGenerator_t curandGen;
 	cufftComplex *d_fftrand;
 	cufftComplex* d_amp;	
-	float *d_residuals; // residuals of samples and underlying unconditional realization
+	//float *d_residuals; // residuals of samples and underlying unconditional realization
 	
 	curandCreateGenerator(&curandGen, CURAND_RNG_PSEUDO_DEFAULT);
 	curandSetPseudoRandomGeneratorSeed(curandGen,(unsigned long long)(time(NULL)));	
@@ -1182,10 +1184,21 @@ void EXPORT conditionalSimUncondResiduals_2f(float *p_out, int *p_k, int *ret_co
 
 	
 	if (cond_global_2f.krige_method == ORDINARY) {
-		cudaMalloc((void**)&d_residuals,sizeof(float)* (cond_global_2f.numSrc + 1));
+		if (cond_global_2f.cpu_invert_only)  { // Maintain all residuals on the GPU
+			cudaMalloc((void**)&cond_global_2f.d_residuals,sizeof(float)* cond_global_2f.k * (cond_global_2f.numSrc + 1));
+		}
+		else { // Copy residuals per realization back to CPU
+			cudaMalloc((void**)&cond_global_2f.d_residuals,sizeof(float)*  (cond_global_2f.numSrc + 1));
+		}
 	}
 	else if (cond_global_2f.krige_method == SIMPLE) {
-		cudaMalloc((void**)&d_residuals,sizeof(float)* cond_global_2f.numSrc);
+		if (cond_global_2f.cpu_invert_only)  { // Maintain all residuals on the GPU
+			cudaMalloc((void**)&cond_global_2f.d_residuals,sizeof(float)* cond_global_2f.k  * cond_global_2f.numSrc);
+		}
+		else { // Copy residuals per realization back to CPU
+			cudaMalloc((void**)&cond_global_2f.d_residuals,sizeof(float)* cond_global_2f.numSrc);
+		}
+		
 	}
 		
 	for(int l=0; l<cond_global_2f.k; ++l) {
@@ -1225,18 +1238,22 @@ void EXPORT conditionalSimUncondResiduals_2f(float *p_out, int *p_k, int *ret_co
 		// Compute residuals between samples and d_uncond
 		if (cond_global_2f.uncond_gpucache) {
 			if (cond_global_2f.krige_method == ORDINARY) {
-				residualsOrdinary_2f<<<cond_global_2f.blockCountSamples,cond_global_2f.blockSizeSamples>>>(d_residuals,cond_global_2f.d_sampledata,cond_global_2f.d_uncond+l*(cond_global_2f.nx*cond_global_2f.ny),cond_global_2f.d_sampleindices,cond_global_2f.nx,cond_global_2f.ny,cond_global_2f.numSrc);
+				if (cond_global_2f.cpu_invert_only) residualsOrdinary_2f<<<cond_global_2f.blockCountSamples,cond_global_2f.blockSizeSamples>>>(cond_global_2f.d_residuals + l * (cond_global_2f.numSrc+ 1),cond_global_2f.d_sampledata,cond_global_2f.d_uncond+l*(cond_global_2f.nx*cond_global_2f.ny),cond_global_2f.d_sampleindices,cond_global_2f.nx,cond_global_2f.ny,cond_global_2f.numSrc);
+				else residualsOrdinary_2f<<<cond_global_2f.blockCountSamples,cond_global_2f.blockSizeSamples>>>(cond_global_2f.d_residuals,cond_global_2f.d_sampledata,cond_global_2f.d_uncond+l*(cond_global_2f.nx*cond_global_2f.ny),cond_global_2f.d_sampleindices,cond_global_2f.nx,cond_global_2f.ny,cond_global_2f.numSrc);
 			}
 			else if (cond_global_2f.krige_method == SIMPLE) {
-				residualsSimple_2f<<<cond_global_2f.blockCountSamples,cond_global_2f.blockSizeSamples>>>(d_residuals,cond_global_2f.d_sampledata,cond_global_2f.d_uncond+l*(cond_global_2f.nx*cond_global_2f.ny),cond_global_2f.d_sampleindices,cond_global_2f.nx,cond_global_2f.ny,cond_global_2f.numSrc, cond_global_2f.mu);
+				if (cond_global_2f.cpu_invert_only)  residualsSimple_2f<<<cond_global_2f.blockCountSamples,cond_global_2f.blockSizeSamples>>>(cond_global_2f.d_residuals + l * (cond_global_2f.numSrc),cond_global_2f.d_sampledata,cond_global_2f.d_uncond+l*(cond_global_2f.nx*cond_global_2f.ny),cond_global_2f.d_sampleindices,cond_global_2f.nx,cond_global_2f.ny,cond_global_2f.numSrc, cond_global_2f.mu);
+				else residualsSimple_2f<<<cond_global_2f.blockCountSamples,cond_global_2f.blockSizeSamples>>>(cond_global_2f.d_residuals,cond_global_2f.d_sampledata,cond_global_2f.d_uncond+l*(cond_global_2f.nx*cond_global_2f.ny),cond_global_2f.d_sampleindices,cond_global_2f.nx,cond_global_2f.ny,cond_global_2f.numSrc, cond_global_2f.mu);
 			}
 		}
 		else {
 			if (cond_global_2f.krige_method == ORDINARY) {
-				residualsOrdinary_2f<<<cond_global_2f.blockCountSamples,cond_global_2f.blockSizeSamples>>>(d_residuals,cond_global_2f.d_sampledata,cond_global_2f.d_uncond,cond_global_2f.d_sampleindices,cond_global_2f.nx,cond_global_2f.ny,cond_global_2f.numSrc);
+				if (cond_global_2f.cpu_invert_only) residualsOrdinary_2f<<<cond_global_2f.blockCountSamples,cond_global_2f.blockSizeSamples>>>(cond_global_2f.d_residuals + l * (cond_global_2f.numSrc+ 1),cond_global_2f.d_sampledata,cond_global_2f.d_uncond,cond_global_2f.d_sampleindices,cond_global_2f.nx,cond_global_2f.ny,cond_global_2f.numSrc);
+				else residualsOrdinary_2f<<<cond_global_2f.blockCountSamples,cond_global_2f.blockSizeSamples>>>(cond_global_2f.d_residuals,cond_global_2f.d_sampledata,cond_global_2f.d_uncond,cond_global_2f.d_sampleindices,cond_global_2f.nx,cond_global_2f.ny,cond_global_2f.numSrc);
 			}
 			else if (cond_global_2f.krige_method == SIMPLE) {
-				residualsSimple_2f<<<cond_global_2f.blockCountSamples,cond_global_2f.blockSizeSamples>>>(d_residuals,cond_global_2f.d_sampledata,cond_global_2f.d_uncond,cond_global_2f.d_sampleindices,cond_global_2f.nx,cond_global_2f.ny,cond_global_2f.numSrc, cond_global_2f.mu);
+				if (cond_global_2f.cpu_invert_only)  residualsSimple_2f<<<cond_global_2f.blockCountSamples,cond_global_2f.blockSizeSamples>>>(cond_global_2f.d_residuals + l * (cond_global_2f.numSrc),cond_global_2f.d_sampledata,cond_global_2f.d_uncond,cond_global_2f.d_sampleindices,cond_global_2f.nx,cond_global_2f.ny,cond_global_2f.numSrc, cond_global_2f.mu);
+				else residualsSimple_2f<<<cond_global_2f.blockCountSamples,cond_global_2f.blockSizeSamples>>>(cond_global_2f.d_residuals,cond_global_2f.d_sampledata,cond_global_2f.d_uncond,cond_global_2f.d_sampleindices,cond_global_2f.nx,cond_global_2f.ny,cond_global_2f.numSrc, cond_global_2f.mu);
 			}
 		}
 
@@ -1246,12 +1263,18 @@ void EXPORT conditionalSimUncondResiduals_2f(float *p_out, int *p_k, int *ret_co
 	
 
 		// Copy residuals to R, col major...
-		if (cond_global_2f.krige_method == ORDINARY) {
-			cudaMemcpy((p_out + l*(cond_global_2f.numSrc + 1)),d_residuals,sizeof(float)* (cond_global_2f.numSrc + 1),cudaMemcpyDeviceToHost);	
+		if (!cond_global_2f.cpu_invert_only) {
+			if (cond_global_2f.krige_method == ORDINARY) {
+				cudaMemcpy((p_out + l*(cond_global_2f.numSrc + 1)),cond_global_2f.d_residuals,sizeof(float)* (cond_global_2f.numSrc + 1),cudaMemcpyDeviceToHost);	
+			}
+			else if (cond_global_2f.krige_method == SIMPLE) {
+				cudaMemcpy(p_out + l*cond_global_2f.numSrc,cond_global_2f.d_residuals,sizeof(float) * cond_global_2f.numSrc,cudaMemcpyDeviceToHost);	
+			}
 		}
-		else if (cond_global_2f.krige_method == SIMPLE) {
-			cudaMemcpy(p_out + l*cond_global_2f.numSrc,d_residuals,sizeof(float) * cond_global_2f.numSrc,cudaMemcpyDeviceToHost);	
-		}
+		 
+		
+		
+		
 
 		// if needed, cache uncond realizations on cpu
 		if (!cond_global_2f.uncond_gpucache) {
@@ -1259,22 +1282,44 @@ void EXPORT conditionalSimUncondResiduals_2f(float *p_out, int *p_k, int *ret_co
 		}
 	}
 	curandDestroyGenerator(curandGen);
+	// Copy residuals to R, col major...
+	if (cond_global_2f.cpu_invert_only) {
+		if (cond_global_2f.krige_method == ORDINARY) {
+			cudaMemcpy(p_out,cond_global_2f.d_residuals,sizeof(float)* (cond_global_2f.k) * (cond_global_2f.numSrc + 1),cudaMemcpyDeviceToHost);	
+		}
+		else if (cond_global_2f.krige_method == SIMPLE) {
+			cudaMemcpy(p_out,cond_global_2f.d_residuals,sizeof(float) * (cond_global_2f.k) * cond_global_2f.numSrc,cudaMemcpyDeviceToHost);	
+		}
+	}
+
 	
 	cudaFree(d_rand);
 	cudaFree(d_fftrand);
 	cudaFree(d_amp);
-	cudaFree(d_residuals);
+	if (!cond_global_2f.cpu_invert_only) cudaFree(cond_global_2f.d_residuals);
 }
 
-
+// Ordinary kriging 
 void EXPORT conditionalSimKrigeResiduals_2f(float *p_out, float *p_y, int *ret_code)
 {
 	*ret_code = OK;
 	cudaError_t cudaStatus = cudaSuccess;
 	
-	float *d_y; // result vector from solving the kriging equation system
+	float *d_y; // result vector  from solving the kriging equation system
 	float *d_respred; // interpolated residuals
-	cudaMalloc((void**)&d_y, sizeof(float) * (cond_global_2f.numSrc + 1));
+	if (!cond_global_2f.cpu_invert_only)  {
+		cudaMalloc((void**)&d_y, sizeof(float) * (cond_global_2f.numSrc + 1));
+	}
+	else  { // if C is only inverted on CPU, compute matrix product to get reciprocal residual vector
+		float *d_Cinv;
+		cudaMalloc((void**)&d_Cinv,sizeof(float) * (cond_global_2f.numSrc + 1) * (cond_global_2f.numSrc + 1));
+		cudaMalloc((void**)&d_y, sizeof(float) * cond_global_2f.k * (cond_global_2f.numSrc + 1));
+		cudaMemcpy(d_Cinv, p_y, sizeof(float) *(cond_global_2f.numSrc + 1) * (cond_global_2f.numSrc + 1),cudaMemcpyHostToDevice);
+		cublasSgemm('n','n',cond_global_2f.numSrc + 1,cond_global_2f.k,cond_global_2f.numSrc + 1,1.0,d_Cinv,cond_global_2f.numSrc+1,cond_global_2f.d_residuals,cond_global_2f.numSrc+1,0.0,d_y,cond_global_2f.numSrc+1);	
+		cudaFree(d_Cinv);
+	}
+
+
 	cudaMalloc((void**)&d_respred, sizeof(float) * cond_global_2f.nx * cond_global_2f.ny);
 	
 	dim3 blockSizeKrige = dim3(BLOCK_SIZE_KRIGE1);
@@ -1287,16 +1332,27 @@ void EXPORT conditionalSimKrigeResiduals_2f(float *p_out, float *p_y, int *ret_c
 
 	for(int l = 0; l<cond_global_2f.k; ++l) {
 						
+		if (!cond_global_2f.cpu_invert_only) 
+			cudaMemcpy(d_y, p_y + l*(cond_global_2f.numSrc + 1), sizeof(float) * (cond_global_2f.numSrc + 1),cudaMemcpyHostToDevice);		
 		
-		cudaMemcpy(d_y, p_y + l*(cond_global_2f.numSrc + 1), sizeof(float) * (cond_global_2f.numSrc + 1),cudaMemcpyHostToDevice);		
+		// Kriging prediction of residuals
+		if (cond_global_2f.cpu_invert_only) {
+			if (cond_global_2f.isotropic) {
+				krigingKernel_2f<<<blockCntKrige, blockSizeKrige>>>(d_respred,cond_global_2f.d_samplexy,cond_global_2f.xmin,cond_global_2f.dx,cond_global_2f.ymin,cond_global_2f.dy,d_y + l*(cond_global_2f.numSrc+1),cond_global_2f.covmodel,cond_global_2f.range,cond_global_2f.sill,cond_global_2f.nugget,cond_global_2f.numSrc,cond_global_2f.nx,cond_global_2f.ny);
+			}
+			else {
+				krigingAnisKernel_2f<<<blockCntKrige, blockSizeKrige>>>(d_respred,cond_global_2f.d_samplexy,cond_global_2f.xmin,cond_global_2f.dx,cond_global_2f.ymin,cond_global_2f.dy,d_y + l*(cond_global_2f.numSrc+1),cond_global_2f.covmodel,cond_global_2f.range,cond_global_2f.sill,cond_global_2f.nugget,cond_global_2f.alpha,cond_global_2f.afac1,cond_global_2f.numSrc,cond_global_2f.nx,cond_global_2f.ny);
+			}
+		}
+		else {
+			if (cond_global_2f.isotropic) {
+				krigingKernel_2f<<<blockCntKrige, blockSizeKrige>>>(d_respred,cond_global_2f.d_samplexy,cond_global_2f.xmin,cond_global_2f.dx,cond_global_2f.ymin,cond_global_2f.dy,d_y,cond_global_2f.covmodel,cond_global_2f.range,cond_global_2f.sill,cond_global_2f.nugget,cond_global_2f.numSrc,cond_global_2f.nx,cond_global_2f.ny);
+			}
+			else 	{
+				krigingAnisKernel_2f<<<blockCntKrige, blockSizeKrige>>>(d_respred,cond_global_2f.d_samplexy,cond_global_2f.xmin,cond_global_2f.dx,cond_global_2f.ymin,cond_global_2f.dy,d_y,cond_global_2f.covmodel,cond_global_2f.range,cond_global_2f.sill,cond_global_2f.nugget,cond_global_2f.alpha,cond_global_2f.afac1,cond_global_2f.numSrc,cond_global_2f.nx,cond_global_2f.ny);
+			}
+		}
 		
-		// Kriging prediction
-
-		if (cond_global_2f.isotropic)
-			krigingKernel_2f<<<blockCntKrige, blockSizeKrige>>>(d_respred,cond_global_2f.d_samplexy,cond_global_2f.xmin,cond_global_2f.dx,cond_global_2f.ymin,cond_global_2f.dy,d_y,cond_global_2f.covmodel,cond_global_2f.range,cond_global_2f.sill,cond_global_2f.nugget,cond_global_2f.numSrc,cond_global_2f.nx,cond_global_2f.ny);
-		else 	
-			krigingAnisKernel_2f<<<blockCntKrige, blockSizeKrige>>>(d_respred,cond_global_2f.d_samplexy,cond_global_2f.xmin,cond_global_2f.dx,cond_global_2f.ymin,cond_global_2f.dy,d_y,cond_global_2f.covmodel,cond_global_2f.range,cond_global_2f.sill,cond_global_2f.nugget,cond_global_2f.alpha,cond_global_2f.afac1,cond_global_2f.numSrc,cond_global_2f.nx,cond_global_2f.ny);
-
 		if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching krigingExpKernel_2f!\n", cudaStatus);
 		
 		// Add result to unconditional realization
@@ -1316,6 +1372,7 @@ void EXPORT conditionalSimKrigeResiduals_2f(float *p_out, float *p_y, int *ret_c
 	}
 	cudaFree(d_y);
 	cudaFree(d_respred);
+	
 }
 
 
@@ -1326,9 +1383,20 @@ void EXPORT conditionalSimSimpleKrigeResiduals_2f(float *p_out, float *p_y, int 
 	*ret_code = OK;
 	cudaError_t cudaStatus = cudaSuccess;
 	
-	float *d_y; // result vector from solving the kriging equation system
+
+	float *d_y; // result vector  from solving the kriging equation system
 	float *d_respred; // interpolated residuals
-	cudaMalloc((void**)&d_y, sizeof(float) * cond_global_2f.numSrc); // not + 1, no lagrange multiplicator in simple kriging
+	if (!cond_global_2f.cpu_invert_only)  {
+		cudaMalloc((void**)&d_y, sizeof(float) * (cond_global_2f.numSrc));
+	}
+	else  { // if C is only inverted on CPU, compute matrix product to get reciprocal residual vector
+		float *d_Cinv;
+		cudaMalloc((void**)&d_Cinv,sizeof(float) * (cond_global_2f.numSrc) * (cond_global_2f.numSrc));
+		cudaMalloc((void**)&d_y, sizeof(float) * cond_global_2f.k * (cond_global_2f.numSrc));
+		cudaMemcpy(d_Cinv, p_y, sizeof(float) *(cond_global_2f.numSrc) * (cond_global_2f.numSrc),cudaMemcpyHostToDevice);
+		cublasSgemm('n','n',cond_global_2f.numSrc,cond_global_2f.k,cond_global_2f.numSrc,1.0,d_Cinv,cond_global_2f.numSrc,cond_global_2f.d_residuals,cond_global_2f.numSrc,0.0,d_y,cond_global_2f.numSrc);	
+		cudaFree(d_Cinv);
+	}
 	cudaMalloc((void**)&d_respred, sizeof(float) * cond_global_2f.nx * cond_global_2f.ny);
 	
 	dim3 blockSizeKrige = dim3(BLOCK_SIZE_KRIGE1);
@@ -1342,14 +1410,26 @@ void EXPORT conditionalSimSimpleKrigeResiduals_2f(float *p_out, float *p_y, int 
 	for(int l = 0; l<cond_global_2f.k; ++l) {
 						
 		
-		cudaMemcpy(d_y, p_y + l*cond_global_2f.numSrc, sizeof(float) * cond_global_2f.numSrc,cudaMemcpyHostToDevice);	// not + 1, no lagrange multiplicator in simple kriging		
-		// Kriging prediction
-
-		if (cond_global_2f.isotropic)
-			krigingSimpleKernel_2f<<<blockCntKrige, blockSizeKrige>>>(d_respred,cond_global_2f.d_samplexy,cond_global_2f.xmin,cond_global_2f.dx,cond_global_2f.ymin,cond_global_2f.dy,d_y,cond_global_2f.covmodel,cond_global_2f.range,cond_global_2f.sill,cond_global_2f.nugget,cond_global_2f.numSrc,cond_global_2f.nx,cond_global_2f.ny,cond_global_2f.mu);			
-		else 	
-			krigingSimpleAnisKernel_2f<<<blockCntKrige, blockSizeKrige>>>(d_respred,cond_global_2f.d_samplexy,cond_global_2f.xmin,cond_global_2f.dx,cond_global_2f.ymin,cond_global_2f.dy,d_y,cond_global_2f.covmodel,cond_global_2f.range,cond_global_2f.sill,cond_global_2f.nugget,cond_global_2f.alpha , cond_global_2f.afac1 ,cond_global_2f.numSrc,cond_global_2f.nx,cond_global_2f.ny,cond_global_2f.mu);			
-
+		if (!cond_global_2f.cpu_invert_only) 
+			cudaMemcpy(d_y, p_y + l*(cond_global_2f.numSrc), sizeof(float) * (cond_global_2f.numSrc),cudaMemcpyHostToDevice);		
+		
+		// Kriging prediction of residuals
+		if (cond_global_2f.cpu_invert_only) {
+			if (cond_global_2f.isotropic) {
+				krigingKernel_2f<<<blockCntKrige, blockSizeKrige>>>(d_respred,cond_global_2f.d_samplexy,cond_global_2f.xmin,cond_global_2f.dx,cond_global_2f.ymin,cond_global_2f.dy,d_y + l*(cond_global_2f.numSrc),cond_global_2f.covmodel,cond_global_2f.range,cond_global_2f.sill,cond_global_2f.nugget,cond_global_2f.numSrc,cond_global_2f.nx,cond_global_2f.ny);
+			}
+			else {
+				krigingAnisKernel_2f<<<blockCntKrige, blockSizeKrige>>>(d_respred,cond_global_2f.d_samplexy,cond_global_2f.xmin,cond_global_2f.dx,cond_global_2f.ymin,cond_global_2f.dy,d_y + l*(cond_global_2f.numSrc),cond_global_2f.covmodel,cond_global_2f.range,cond_global_2f.sill,cond_global_2f.nugget,cond_global_2f.alpha,cond_global_2f.afac1,cond_global_2f.numSrc,cond_global_2f.nx,cond_global_2f.ny);
+			}
+		}
+		else {
+			if (cond_global_2f.isotropic) {
+				krigingKernel_2f<<<blockCntKrige, blockSizeKrige>>>(d_respred,cond_global_2f.d_samplexy,cond_global_2f.xmin,cond_global_2f.dx,cond_global_2f.ymin,cond_global_2f.dy,d_y,cond_global_2f.covmodel,cond_global_2f.range,cond_global_2f.sill,cond_global_2f.nugget,cond_global_2f.numSrc,cond_global_2f.nx,cond_global_2f.ny);
+			}
+			else 	{
+				krigingAnisKernel_2f<<<blockCntKrige, blockSizeKrige>>>(d_respred,cond_global_2f.d_samplexy,cond_global_2f.xmin,cond_global_2f.dx,cond_global_2f.ymin,cond_global_2f.dy,d_y,cond_global_2f.covmodel,cond_global_2f.range,cond_global_2f.sill,cond_global_2f.nugget,cond_global_2f.alpha,cond_global_2f.afac1,cond_global_2f.numSrc,cond_global_2f.nx,cond_global_2f.ny);
+			}
+		}
 		if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching krigingExpKernel_2f!\n", cudaStatus);
 		
 		
@@ -1383,6 +1463,9 @@ void EXPORT conditionalSimRelease_2f(int *ret_code) {
 	if (!cond_global_2f.uncond_gpucache) {
 		free(cond_global_2f.h_uncond);
 	}
+
+	if(cond_global_2f.cpu_invert_only) cudaFree(cond_global_2f.d_residuals);
+	
 }
 
 
@@ -1432,7 +1515,6 @@ struct conditioning_state_2f {
 	int covmodel;
 	float mu; // known mean for simple kriging
 	int krige_method;
-
 } conditioning_global_2f;
 
 #ifdef __cplusplus

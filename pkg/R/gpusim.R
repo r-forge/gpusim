@@ -9,7 +9,7 @@
 
 
 
-gpuSim <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method='S', mu=0, aggregation.features=NULL, aggregation.func=mean, gpu.cache=TRUE, as.sp=FALSE, check=FALSE, benchmark=FALSE, prec.double=FALSE, compute.stats=FALSE, anis=c(0,0,0,1,1)) {
+gpuSim <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method='O', mu=0, aggregation.features=NULL, aggregation.func=mean, gpu.cache=TRUE, as.sp=FALSE, check=FALSE, benchmark=FALSE, prec.double=FALSE, compute.stats=FALSE, anis=c(0,0,0,1,1), cpu.invertonly=FALSE) {
 	
 	if (missing(grid)) {
 		stop("Error: Missing grid argument!")
@@ -35,11 +35,7 @@ gpuSim <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, krig
 	if (length(anis) != 5) {
 		stop("Expected 5 or 2 anisotropy values!")
 	}
-	
-	if(kriging.method == 'O' || kriging.method == 'o') {
-		warning("Implementation of conditioning by ordinary kriging is currently still beeing tested. Results might contain errors!")
-	}
-	
+
 	
 	
 	# aggregation input args check
@@ -60,15 +56,16 @@ gpuSim <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, krig
 	out <- 0
 	if (dims == 2) {
 		if (prec.double) {
-			out <- .sim2d(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, aggregation.features, aggregation.func, gpu.cache, as.sp, check, benchmark, compute.stats, anis)
+			out <- .sim2d(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, aggregation.features, aggregation.func, gpu.cache, as.sp, check, benchmark, compute.stats, anis, cpu.invertonly)
 		}
-		else out <- .sim2f(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, aggregation.features, aggregation.func, gpu.cache, as.sp, check, benchmark, compute.stats, anis)
+		else out <- .sim2f(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, aggregation.features, aggregation.func, gpu.cache, as.sp, check, benchmark, compute.stats, anis, cpu.invertonly)
 	}
 	else if (dims == 3) {
+		if (cpu.invertonly) warning("cpu.invertonly is only used for testing purposes in two-dimensional simulation, argument will be ignored...")
 		if (prec.double) {
-			out <- .sim3d(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, aggregation.features, aggregation.func, gpu.cache, as.sp, check, benchmark, compute.stats, anis)
+			out <- .sim3d(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, aggregation.features, aggregation.func, gpu.cache, as.sp, check, benchmark, compute.stats, anis, cpu.invertonly)
 		}
-		else out <- .sim3f(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, aggregation.features, aggregation.func, gpu.cache, as.sp, check, benchmark, compute.stats, anis)
+		else out <- .sim3f(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, aggregation.features, aggregation.func, gpu.cache, as.sp, check, benchmark, compute.stats, anis, cpu.invertonly)
 	}
 	else stop("Only two- or three-dimensional simulation supported!")
 	
