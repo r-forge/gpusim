@@ -140,7 +140,10 @@
 			dim(res$out) = c(numSrc,k)
 			y <- 0
 			if (cpu.invertonly) {
-				y = solve(cov.l)
+			  # y = solve(cov.l)
+			  message("Cholesky decomposition of simple kriging system.")
+			  cholesky=chol(cov.l)
+			  y <- chol2inv(cholesky)
 			}
 			else {
 				y = solve(cov.l, res$out)	
@@ -303,7 +306,10 @@
 			dim(res$out) = c(numSrc,k)
 			y <- 0
 			if (cpu.invertonly) {
-				y = solve(cov.l)
+			  # y = solve(cov.l)
+			  message("Cholesky decomposition of simple kriging system.")
+			  cholesky=chol(cov.l)
+			  y <- chol2inv(cholesky)
 			}
 			else {
 				y = solve(cov.l, res$out)	

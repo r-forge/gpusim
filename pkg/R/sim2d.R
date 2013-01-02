@@ -142,7 +142,7 @@
 			y <- 0
 			if (cpu.invertonly) {
 				# y = solve(cov.l)
-        warning("Cholesky decomposition of simple kriging system.")
+        message("Cholesky decomposition of simple kriging system.")
         cholesky=chol(cov.l)
         y <- chol2inv(cholesky)
 			}
@@ -303,7 +303,7 @@
 			y <- 0
 			if (cpu.invertonly) {
 			  # y = solve(cov.l)
-			  warning("Cholesky decomposition of simple kriging system.")
+			  message("Cholesky decomposition of simple kriging system.")
 			  cholesky=chol(cov.l)
 			  y <- chol2inv(cholesky)
 			}
