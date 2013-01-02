@@ -301,7 +301,9 @@
 			dim(res$out) = c(numSrc,k)
 			y <- 0
 			if (cpu.invertonly) {
-				y = solve(cov.l)
+			  # y = solve(cov.l)
+			  cholesky=chol(cov.l)
+			  y <- chol2inv(cholesky)
 			}
 			else {
 				y = solve(cov.l, res$out)	
