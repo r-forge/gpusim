@@ -1423,18 +1423,18 @@ void EXPORT conditionalSimSimpleKrigeResiduals_2d(double *p_out, double *p_y, in
 		// Kriging prediction of residuals
 		if (cond_global_2d.cpu_invert_only) {
 			if (cond_global_2d.isotropic) {
-				krigingKernel_2d<<<blockCntKrige, blockSizeKrige>>>(d_respred,cond_global_2d.d_samplexy,cond_global_2d.xmin,cond_global_2d.dx,cond_global_2d.ymin,cond_global_2d.dy,d_y + l*(cond_global_2d.numSrc),cond_global_2d.covmodel,cond_global_2d.range,cond_global_2d.sill,cond_global_2d.nugget,cond_global_2d.numSrc,cond_global_2d.nx,cond_global_2d.ny);
+				krigingSimpleKernel_2d<<<blockCntKrige, blockSizeKrige>>>(d_respred,cond_global_2d.d_samplexy,cond_global_2d.xmin,cond_global_2d.dx,cond_global_2d.ymin,cond_global_2d.dy,d_y + l*(cond_global_2d.numSrc),cond_global_2d.covmodel,cond_global_2d.range,cond_global_2d.sill,cond_global_2d.nugget,cond_global_2d.numSrc,cond_global_2d.nx,cond_global_2d.ny,cond_global_2d.mu);
 			}
 			else {
-				krigingAnisKernel_2d<<<blockCntKrige, blockSizeKrige>>>(d_respred,cond_global_2d.d_samplexy,cond_global_2d.xmin,cond_global_2d.dx,cond_global_2d.ymin,cond_global_2d.dy,d_y + l*(cond_global_2d.numSrc),cond_global_2d.covmodel,cond_global_2d.range,cond_global_2d.sill,cond_global_2d.nugget,cond_global_2d.alpha,cond_global_2d.afac1,cond_global_2d.numSrc,cond_global_2d.nx,cond_global_2d.ny);
+				krigingSimpleAnisKernel_2d<<<blockCntKrige, blockSizeKrige>>>(d_respred,cond_global_2d.d_samplexy,cond_global_2d.xmin,cond_global_2d.dx,cond_global_2d.ymin,cond_global_2d.dy,d_y + l*(cond_global_2d.numSrc),cond_global_2d.covmodel,cond_global_2d.range,cond_global_2d.sill,cond_global_2d.nugget,cond_global_2d.alpha,cond_global_2d.afac1,cond_global_2d.numSrc,cond_global_2d.nx,cond_global_2d.ny,cond_global_2d.mu);
 			}
 		}
 		else {
 			if (cond_global_2d.isotropic) {
-				krigingKernel_2d<<<blockCntKrige, blockSizeKrige>>>(d_respred,cond_global_2d.d_samplexy,cond_global_2d.xmin,cond_global_2d.dx,cond_global_2d.ymin,cond_global_2d.dy,d_y,cond_global_2d.covmodel,cond_global_2d.range,cond_global_2d.sill,cond_global_2d.nugget,cond_global_2d.numSrc,cond_global_2d.nx,cond_global_2d.ny);
+				krigingSimpleKernel_2d<<<blockCntKrige, blockSizeKrige>>>(d_respred,cond_global_2d.d_samplexy,cond_global_2d.xmin,cond_global_2d.dx,cond_global_2d.ymin,cond_global_2d.dy,d_y,cond_global_2d.covmodel,cond_global_2d.range,cond_global_2d.sill,cond_global_2d.nugget,cond_global_2d.numSrc,cond_global_2d.nx,cond_global_2d.ny,cond_global_2d.mu);
 			}
 			else 	{
-				krigingAnisKernel_2d<<<blockCntKrige, blockSizeKrige>>>(d_respred,cond_global_2d.d_samplexy,cond_global_2d.xmin,cond_global_2d.dx,cond_global_2d.ymin,cond_global_2d.dy,d_y,cond_global_2d.covmodel,cond_global_2d.range,cond_global_2d.sill,cond_global_2d.nugget,cond_global_2d.alpha,cond_global_2d.afac1,cond_global_2d.numSrc,cond_global_2d.nx,cond_global_2d.ny);
+				krigingSimpleAnisKernel_2d<<<blockCntKrige, blockSizeKrige>>>(d_respred,cond_global_2d.d_samplexy,cond_global_2d.xmin,cond_global_2d.dx,cond_global_2d.ymin,cond_global_2d.dy,d_y,cond_global_2d.covmodel,cond_global_2d.range,cond_global_2d.sill,cond_global_2d.nugget,cond_global_2d.alpha,cond_global_2d.afac1,cond_global_2d.numSrc,cond_global_2d.nx,cond_global_2d.ny,cond_global_2d.mu);
 			}
 		}
 

@@ -1416,18 +1416,18 @@ void EXPORT conditionalSimSimpleKrigeResiduals_2f(float *p_out, float *p_y, int 
 		// Kriging prediction of residuals
 		if (cond_global_2f.cpu_invert_only) {
 			if (cond_global_2f.isotropic) {
-				krigingKernel_2f<<<blockCntKrige, blockSizeKrige>>>(d_respred,cond_global_2f.d_samplexy,cond_global_2f.xmin,cond_global_2f.dx,cond_global_2f.ymin,cond_global_2f.dy,d_y + l*(cond_global_2f.numSrc),cond_global_2f.covmodel,cond_global_2f.range,cond_global_2f.sill,cond_global_2f.nugget,cond_global_2f.numSrc,cond_global_2f.nx,cond_global_2f.ny);
+				krigingSimpleKernel_2f<<<blockCntKrige, blockSizeKrige>>>(d_respred,cond_global_2f.d_samplexy,cond_global_2f.xmin,cond_global_2f.dx,cond_global_2f.ymin,cond_global_2f.dy,d_y + l*(cond_global_2f.numSrc),cond_global_2f.covmodel,cond_global_2f.range,cond_global_2f.sill,cond_global_2f.nugget,cond_global_2f.numSrc,cond_global_2f.nx,cond_global_2f.ny,cond_global_2f.mu);
 			}
 			else {
-				krigingAnisKernel_2f<<<blockCntKrige, blockSizeKrige>>>(d_respred,cond_global_2f.d_samplexy,cond_global_2f.xmin,cond_global_2f.dx,cond_global_2f.ymin,cond_global_2f.dy,d_y + l*(cond_global_2f.numSrc),cond_global_2f.covmodel,cond_global_2f.range,cond_global_2f.sill,cond_global_2f.nugget,cond_global_2f.alpha,cond_global_2f.afac1,cond_global_2f.numSrc,cond_global_2f.nx,cond_global_2f.ny);
+				krigingSimpleAnisKernel_2f<<<blockCntKrige, blockSizeKrige>>>(d_respred,cond_global_2f.d_samplexy,cond_global_2f.xmin,cond_global_2f.dx,cond_global_2f.ymin,cond_global_2f.dy,d_y + l*(cond_global_2f.numSrc),cond_global_2f.covmodel,cond_global_2f.range,cond_global_2f.sill,cond_global_2f.nugget,cond_global_2f.alpha,cond_global_2f.afac1,cond_global_2f.numSrc,cond_global_2f.nx,cond_global_2f.ny,cond_global_2f.mu);
 			}
 		}
 		else {
 			if (cond_global_2f.isotropic) {
-				krigingKernel_2f<<<blockCntKrige, blockSizeKrige>>>(d_respred,cond_global_2f.d_samplexy,cond_global_2f.xmin,cond_global_2f.dx,cond_global_2f.ymin,cond_global_2f.dy,d_y,cond_global_2f.covmodel,cond_global_2f.range,cond_global_2f.sill,cond_global_2f.nugget,cond_global_2f.numSrc,cond_global_2f.nx,cond_global_2f.ny);
+				krigingSimpleKernel_2f<<<blockCntKrige, blockSizeKrige>>>(d_respred,cond_global_2f.d_samplexy,cond_global_2f.xmin,cond_global_2f.dx,cond_global_2f.ymin,cond_global_2f.dy,d_y,cond_global_2f.covmodel,cond_global_2f.range,cond_global_2f.sill,cond_global_2f.nugget,cond_global_2f.numSrc,cond_global_2f.nx,cond_global_2f.ny,cond_global_2f.mu);
 			}
 			else 	{
-				krigingAnisKernel_2f<<<blockCntKrige, blockSizeKrige>>>(d_respred,cond_global_2f.d_samplexy,cond_global_2f.xmin,cond_global_2f.dx,cond_global_2f.ymin,cond_global_2f.dy,d_y,cond_global_2f.covmodel,cond_global_2f.range,cond_global_2f.sill,cond_global_2f.nugget,cond_global_2f.alpha,cond_global_2f.afac1,cond_global_2f.numSrc,cond_global_2f.nx,cond_global_2f.ny);
+				krigingSimpleAnisKernel_2f<<<blockCntKrige, blockSizeKrige>>>(d_respred,cond_global_2f.d_samplexy,cond_global_2f.xmin,cond_global_2f.dx,cond_global_2f.ymin,cond_global_2f.dy,d_y,cond_global_2f.covmodel,cond_global_2f.range,cond_global_2f.sill,cond_global_2f.nugget,cond_global_2f.alpha,cond_global_2f.afac1,cond_global_2f.numSrc,cond_global_2f.nx,cond_global_2f.ny,cond_global_2f.mu);
 			}
 		}
 		if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching krigingExpKernel_2f!\n", cudaStatus);
