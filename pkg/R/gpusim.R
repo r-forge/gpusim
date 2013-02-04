@@ -7,6 +7,13 @@
 	cat("*********************************\n\n")
  }
 
+ gpuReset <- function() {
+	retcode = 0
+	result = .C("reset",retcode = as.integer(retcode),PACKAGE="gpusim")
+	if (result$retcode != 0) stop(paste("GPU device reset returned error:",.gpuSimCatchError(result$retcode)))	
+	cat("\n******** GPU DEVICE HAS BEEN RESET ********\n")
+	gc()
+ }
 
 
 gpuSim <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method='O', mu=0, aggregation.features=NULL, aggregation.func=mean, gpu.cache=TRUE, as.sp=FALSE, check=FALSE, benchmark=FALSE, prec.double=FALSE, compute.stats=FALSE, anis=c(0,0,0,1,1), cpu.invertonly=FALSE) {

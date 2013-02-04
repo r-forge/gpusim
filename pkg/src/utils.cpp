@@ -75,6 +75,16 @@ void EXPORT initSim(int *result) {
 		sprintf(info[0],"Device: %i - %s\nCUDA Version: %i.%i\nMultiprocessors: %i\nClock Frequency: %iMHz\nGlobal Memory: %iMiB\nShared Memory: %iKiB\nRegisters per Block: %i\nConstant Memory: %iKiB\n",
 		0,props.name,props.major,props.minor,props.multiProcessorCount,(int)(props.clockRate / 1000),(int)(props.totalGlobalMem/(1024*1024)),(int)(props.sharedMemPerBlock/(1024)),props.regsPerBlock,(int)(props.totalConstMem/1024));
 	}
+	
+	void EXPORT reset(int *result) {
+		cudaError_t cudaStatus;
+		cudaStatus = cudaDeviceReset();
+		if (cudaStatus != cudaSuccess)  {
+			printf("cudaDeviceReset returned error code %d\n", cudaStatus);
+			*result = ERROR_NO_DEVICE;
+		}
+		*result = OK;
+	}
 
 
 

@@ -1184,8 +1184,7 @@ void EXPORT conditionalSimUncondResiduals_2d(double *p_out, int *p_k, int *ret_c
 	cudaStatus = cudaMalloc((void**)&d_fftrand,sizeof(cufftDoubleComplex) * cond_global_2d.n * cond_global_2d.m); 
 	if (cudaStatus != cudaSuccess)  printf("cudaMalloc returned error code %d\n", cudaStatus);
 	cudaMalloc((void**)&d_amp,sizeof(cufftDoubleComplex)*cond_global_2d.n*cond_global_2d.m);
-	cudaMalloc((void**)&cond_global_2d.d_uncond,sizeof(double)*cond_global_2d.nx*cond_global_2d.ny * cond_global_2d.k);
-
+	
 	/********************************************************
 	GPU OR CPU CACHING OF UNCOND REALIZATIONS
     *********************************************************/
