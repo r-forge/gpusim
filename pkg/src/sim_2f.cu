@@ -13,7 +13,7 @@
 
 #include "utils.h"
 
-
+//#define DEBUG
 
 
 /*******************************************************************************************
@@ -691,9 +691,9 @@ void EXPORT unconditionalSimInit_2f(float *p_xmin, float *p_xmax, int *p_nx, flo
 	if (uncond_global_2f.n % uncond_global_2f.blockSize2d.x != 0) ++uncond_global_2f.blockCount2d.x;
 	if (uncond_global_2f.m % uncond_global_2f.blockSize2d.y != 0) ++uncond_global_2f.blockCount2d.y;
 
-	
+	cufftResult cufftStatus;
 	//cufftPlan2d(&uncond_global_2f.plan1, uncond_global_2f.n, uncond_global_2f.m, CUFFT_C2C); 
-	cufftPlan2d(&uncond_global_2f.plan1, uncond_global_2f.m, uncond_global_2f.n, CUFFT_C2C); 
+	cufftStatus = cufftPlan2d(&uncond_global_2f.plan1, uncond_global_2f.m, uncond_global_2f.n, CUFFT_C2C); 
 
 	
 	// build grid (ROW MAJOR)
@@ -731,61 +731,65 @@ void EXPORT unconditionalSimInit_2f(float *p_xmin, float *p_xmax, int *p_nx, flo
 	
 	if (isotropic) {
 		sampleCovKernel_2f<<<uncond_global_2f.blockCount2d, uncond_global_2f.blockSize2d>>>(d_trick_grid_c, d_grid, uncond_global_2f.d_cov, xc, yc,*p_covmodel, sill, range,nugget,uncond_global_2f.n,uncond_global_2f.m);
+	    cudaStatus = cudaThreadSynchronize();
+		if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching sampleCovKernel_2f!\n", cudaStatus);
 	}
 	else {	
 		sampleCovAnisKernel_2f<<<uncond_global_2f.blockCount2d, uncond_global_2f.blockSize2d>>>(d_trick_grid_c, d_grid, uncond_global_2f.d_cov, xc, yc, *p_covmodel, sill, range,nugget, alpha, afac1, uncond_global_2f.n,uncond_global_2f.m);	
+		cudaStatus = cudaThreadSynchronize();
+		if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching sampleCovAnisKernel_2f!\n", cudaStatus);
 	}
 	free(h_grid_c);
 	cudaFree(d_grid);
 
 
 	 
-//#ifdef DEBUG 
-//	{
-//		/// ****** TEST AUSGABE COV MATRIX******* ///////
-//		cufftComplex *h_cov = (cufftComplex*)malloc(sizeof(cufftComplex)*uncond_global_2f.n*uncond_global_2f.m);
-//		cudaStatus = cudaMemcpy(h_cov,uncond_global_2f.d_cov,sizeof(cufftComplex)*uncond_global_2f.n*uncond_global_2f.m,cudaMemcpyDeviceToHost);
-//		writeCSVMatrix("C:\\fft\\sampleCov.csv",h_cov,uncond_global_2f.m,uncond_global_2f.n);
-//		free(h_cov);
-//	}
-//#endif
+/*#ifdef DEBUG 
+	{
+		/// ****** TEST AUSGABE COV MATRIX******* ///////
+		cufftComplex *h_cov = (cufftComplex*)malloc(sizeof(cufftComplex)*uncond_global_2f.n*uncond_global_2f.m);
+		cudaStatus = cudaMemcpy(h_cov,uncond_global_2f.d_cov,sizeof(cufftComplex)*uncond_global_2f.n*uncond_global_2f.m,cudaMemcpyDeviceToHost);
+		writeCSVMatrix("C:\\fft\\sampleCov.csv",h_cov,uncond_global_2f.m,uncond_global_2f.n);
+		free(h_cov);
+	}
+#endif*/
 
-//#ifdef DEBUG 
-//	{
-//		/// ****** TEST AUSGABE TRICK GRID ******* /////// 
-//		cufftComplex *h_cov = (cufftComplex*)malloc(sizeof(cufftComplex)*uncond_global_2f.n*uncond_global_2f.m);
-//		cudaStatus = cudaMemcpy(h_cov,d_trick_grid_c,sizeof(cufftComplex)*uncond_global_2f.n*uncond_global_2f.m,cudaMemcpyDeviceToHost);
-//		writeCSVMatrix("C:\\fft\\trickgrid.csv",h_cov,uncond_global_2f.m,uncond_global_2f.n);
-//		free(h_cov);
-//	}
-//#endif
-//
+/*#ifdef DEBUG 
+	{
+		/// ****** TEST AUSGABE TRICK GRID ******* /////// 
+		cufftComplex *h_cov = (cufftComplex*)malloc(sizeof(cufftComplex)*uncond_global_2f.n*uncond_global_2f.m);
+		cudaStatus = cudaMemcpy(h_cov,d_trick_grid_c,sizeof(cufftComplex)*uncond_global_2f.n*uncond_global_2f.m,cudaMemcpyDeviceToHost);
+		writeCSVMatrix("C:\\fft\\trickgrid.csv",h_cov,uncond_global_2f.m,uncond_global_2f.n);
+		free(h_cov);
+	}
+#endif*/
+
 
 
 	// Execute 2d FFT of covariance grid in order to get the spectral representation 
-	cufftExecC2C(uncond_global_2f.plan1, uncond_global_2f.d_cov, uncond_global_2f.d_cov, CUFFT_FORWARD); // in place fft forward
+	cufftStatus = cufftExecC2C(uncond_global_2f.plan1, uncond_global_2f.d_cov, uncond_global_2f.d_cov, CUFFT_FORWARD); // in place fft forward
 
-//#ifdef DEBUG 
-//	{
-//		/// ****** TEST AUSGABE FFT( COV GRID) ******* /////// 
-//		cufftComplex *h_cov = (cufftComplex*)malloc(sizeof(cufftComplex)*uncond_global_2f.n*uncond_global_2f.m);
-//		cudaStatus = cudaMemcpy(h_cov,uncond_global_2f.d_cov,sizeof(cufftComplex)*uncond_global_2f.n*uncond_global_2f.m,cudaMemcpyDeviceToHost);
-//		writeCSVMatrix("C:\\fft\\fftSampleCov.csv",h_cov,uncond_global_2f.m,uncond_global_2f.n);
-//		free(h_cov);
-//	}
-//#endif
-//
-	cufftExecC2C(uncond_global_2f.plan1, d_trick_grid_c, d_trick_grid_c, CUFFT_FORWARD); // in place fft forward
+/*#ifdef DEBUG 
+	{
+		/// ****** TEST AUSGABE FFT( COV GRID) ******* /////// 
+		cufftComplex *h_cov = (cufftComplex*)malloc(sizeof(cufftComplex)*uncond_global_2f.n*uncond_global_2f.m);
+		cudaStatus = cudaMemcpy(h_cov,uncond_global_2f.d_cov,sizeof(cufftComplex)*uncond_global_2f.n*uncond_global_2f.m,cudaMemcpyDeviceToHost);
+		writeCSVMatrix("C:\\fft\\fftSampleCov.csv",h_cov,uncond_global_2f.m,uncond_global_2f.n);
+		free(h_cov);
+	}
+#endif*/
+
+	cufftStatus = cufftExecC2C(uncond_global_2f.plan1, d_trick_grid_c, d_trick_grid_c, CUFFT_FORWARD); // in place fft forward
 	
-//#ifdef DEBUG 
-//	{
-//		/// ****** TEST AUSGABE FFT( TRICK GRID) ******* /////// 
-//		cufftComplex *h_cov = (cufftComplex*)malloc(sizeof(cufftComplex)*uncond_global_2f.n*uncond_global_2f.m);
-//		cudaStatus = cudaMemcpy(h_cov,d_trick_grid_c,sizeof(cufftComplex)*uncond_global_2f.n*uncond_global_2f.m,cudaMemcpyDeviceToHost);
-//		writeCSVMatrix("C:\\fft\\fftTrickGrid.csv",h_cov,uncond_global_2f.m,uncond_global_2f.n);
-//		free(h_cov);
-//	}
-//#endif
+/*#ifdef DEBUG 
+	{
+		/// ****** TEST AUSGABE FFT( TRICK GRID) ******* /////// 
+		cufftComplex *h_cov = (cufftComplex*)malloc(sizeof(cufftComplex)*uncond_global_2f.n*uncond_global_2f.m);
+		cudaStatus = cudaMemcpy(h_cov,d_trick_grid_c,sizeof(cufftComplex)*uncond_global_2f.n*uncond_global_2f.m,cudaMemcpyDeviceToHost);
+		writeCSVMatrix("C:\\fft\\fftTrickGrid.csv",h_cov,uncond_global_2f.m,uncond_global_2f.n);
+		free(h_cov);
+	}
+#endif*/
 	
 	// Multiply fft of "trick" grid with n*m
 	multKernel_2f<<<uncond_global_2f.blockCount1d, uncond_global_2f.blockSize1d>>>(d_trick_grid_c, uncond_global_2f.n, uncond_global_2f.m);
@@ -793,15 +797,15 @@ void EXPORT unconditionalSimInit_2f(float *p_xmin, float *p_xmax, int *p_nx, flo
 	if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching multKernel_2f!\n", cudaStatus);	
 
 
-//#ifdef DEBUG 
-//	{
-//		/// ****** TEST AUSGABE FFT( TRICK GRID) ******* /////// 
-//		cufftComplex *h_cov = (cufftComplex*)malloc(sizeof(cufftComplex)*uncond_global_2f.n*uncond_global_2f.m);
-//		cudaStatus = cudaMemcpy(h_cov,d_trick_grid_c,sizeof(cufftComplex)*uncond_global_2f.n*uncond_global_2f.m,cudaMemcpyDeviceToHost);
-//		writeCSVMatrix("C:\\fft\\fftTrickGridTimesNM.csv",h_cov,uncond_global_2f.m,uncond_global_2f.n);
-//		free(h_cov);
-//	}
-//#endif
+/*#ifdef DEBUG 
+	{
+		/// ****** TEST AUSGABE FFT( TRICK GRID) ******* /////// 
+		cufftComplex *h_cov = (cufftComplex*)malloc(sizeof(cufftComplex)*uncond_global_2f.n*uncond_global_2f.m);
+		cudaStatus = cudaMemcpy(h_cov,d_trick_grid_c,sizeof(cufftComplex)*uncond_global_2f.n*uncond_global_2f.m,cudaMemcpyDeviceToHost);
+		writeCSVMatrix("C:\\fft\\fftTrickGridTimesNM.csv",h_cov,uncond_global_2f.m,uncond_global_2f.n);
+		free(h_cov);
+	}
+#endif*/
 
 
 	// Devide spectral covariance grid by "trick" grid
@@ -810,16 +814,16 @@ void EXPORT unconditionalSimInit_2f(float *p_xmin, float *p_xmax, int *p_nx, flo
 	if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching divideSpectrumKernel_2f!\n", cudaStatus);	
 	cudaFree(d_trick_grid_c);
 	
-//#ifdef DEBUG 
-//	{
-//		/// ****** TEST AUSGABE FFT( COV GRID) / FFT(TRICKGRID)*N*M ******* /////// 
-//		cufftComplex *h_cov = (cufftComplex*)malloc(sizeof(cufftComplex)*uncond_global_2f.n*uncond_global_2f.m);
-//		cudaStatus = cudaMemcpy(h_cov,uncond_global_2f.d_cov,sizeof(cufftComplex)*uncond_global_2f.n*uncond_global_2f.m,cudaMemcpyDeviceToHost);
-//		writeCSVMatrix("C:\\fft\\fftSampleCovByTrickGridNM.csv",h_cov,uncond_global_2f.m,uncond_global_2f.n);
-//		free(h_cov);
-//	}
-//#endif
-//
+/*#ifdef DEBUG 
+	{
+		/// ****** TEST AUSGABE FFT( COV GRID) / FFT(TRICKGRID)*N*M ******* /////// 
+		cufftComplex *h_cov = (cufftComplex*)malloc(sizeof(cufftComplex)*uncond_global_2f.n*uncond_global_2f.m);
+		cudaStatus = cudaMemcpy(h_cov,uncond_global_2f.d_cov,sizeof(cufftComplex)*uncond_global_2f.n*uncond_global_2f.m,cudaMemcpyDeviceToHost);
+		writeCSVMatrix("C:\\fft\\fftSampleCovByTrickGridNM.csv",h_cov,uncond_global_2f.m,uncond_global_2f.n);
+		free(h_cov);
+	}
+#endif*/
+
 
 
 	// Copy to host and check for negative real parts
