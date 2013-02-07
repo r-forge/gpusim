@@ -681,7 +681,7 @@ void EXPORT unconditionalSimInit_2f(float *p_xmin, float *p_xmax, int *p_nx, flo
 	uncond_global_2f.dy = (*p_ymax - *p_ymin) / (uncond_global_2f.ny-1);
 	
 	// 1d cuda grid
-	uncond_global_2f.blockSize1d = dim3(256);
+	uncond_global_2f.blockSize1d = dim3(1024);
 	uncond_global_2f.blockCount1d = dim3(uncond_global_2f.n*uncond_global_2f.m / uncond_global_2f.blockSize1d.x);
 	if (uncond_global_2f.n * uncond_global_2f.m % uncond_global_2f.blockSize1d.x  != 0) ++uncond_global_2f.blockCount1d.x;
 	
