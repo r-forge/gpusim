@@ -730,13 +730,13 @@ void EXPORT unconditionalSimInit_2d(double *p_xmin, double *p_xmax, int *p_nx, d
 	
 	if (isotropic) {
 		sampleCovKernel_2d<<<uncond_global_2d.blockCount2d, uncond_global_2d.blockSize2d>>>(d_trick_grid_c, d_grid, uncond_global_2d.d_cov, xc, yc,*p_covmodel, sill, range,nugget,uncond_global_2d.n,uncond_global_2d.m);
-		cudaStatus = cudaThreadSynchronize();
-		if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching sampleCovKernel_2d!\n", cudaStatus);	
+		//cudaStatus = cudaThreadSynchronize();
+		//if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching sampleCovKernel_2d!\n", cudaStatus);	
 	}
 	else {	
 		sampleCovAnisKernel_2d<<<uncond_global_2d.blockCount2d, uncond_global_2d.blockSize2d>>>(d_trick_grid_c, d_grid, uncond_global_2d.d_cov, xc, yc, *p_covmodel, sill, range,nugget, alpha, afac1, uncond_global_2d.n,uncond_global_2d.m);	
-		cudaStatus = cudaThreadSynchronize();
-		if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching sampleCovAnisKernel_2d!\n", cudaStatus);	
+		//cudaStatus = cudaThreadSynchronize();
+		//if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching sampleCovAnisKernel_2d!\n", cudaStatus);	
 	}
 	free(h_grid_c);
 	cudaFree(d_grid);
@@ -1042,7 +1042,7 @@ void EXPORT conditionalSimInit_2d(double *p_xmin, double *p_xmax, int *p_nx, dou
 	cond_global_2d.uncond_gpucache = (*uncond_gpucache != 0);
 
 	// 1d cuda grid
-	cond_global_2d.blockSize1d = dim3(256);
+	cond_global_2d.blockSize1d = dim3(1024);
 	cond_global_2d.blockCount1d = dim3(cond_global_2d.n*cond_global_2d.m / cond_global_2d.blockSize1d.x);
 	if (cond_global_2d.n * cond_global_2d.m % cond_global_2d.blockSize1d.x  != 0) ++cond_global_2d.blockCount1d.x;
 	
