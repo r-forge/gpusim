@@ -1,4 +1,4 @@
-OBJ_FILES = sim_2f.obj sim_2d.obj sim_3d.obj sim_3f.obj fft.obj utils.obj dist.obj
+OBJ_FILES = sim_2f.obj sim_2d.obj sim_3d.obj sim_3f.obj fft.obj utils.obj dist.obj simcpu_2d.obj
 DLLOUT = gpusim.dll
 
 
@@ -13,8 +13,14 @@ else
 	CUDA_SDK_LIB = "$(CUDA_PATH)/lib/Win32"
 endif
 
+ifeq "$(R_ARCH)" "/x64"
+	FFTW_LIB = "$(FFTW64)"
+else
+	FFTW_LIB = "$(FFTW32)"
+endif
 
-LIBS = cuda.lib cudart.lib cublas.lib curand.lib cufft.lib
+
+LIBS = cuda.lib cudart.lib cublas.lib curand.lib cufft.lib libfftw3-3.lib
 
 
 ifeq "$(R_ARCH)" "/x64"
@@ -27,31 +33,34 @@ endif
 
 gpusim.dll: $(OBJ_FILES)
 ifeq "$(R_ARCH)" "/x64"
-	link /DLL /OUT:$(DLLOUT) $(OBJ_FILES) /LIBPATH:$(CUDA_SDK_LIB) $(LIBS) /MACHINE:X64
+	link /DLL /OUT:$(DLLOUT) $(OBJ_FILES) /LIBPATH:$(CUDA_SDK_LIB) /LIBPATH:$(FFTW_LIB) $(LIBS) /MACHINE:X64
 else
-	link /DLL /OUT:$(DLLOUT) $(OBJ_FILES) /LIBPATH:$(CUDA_SDK_LIB) $(LIBS) /MACHINE:X86
+	link /DLL /OUT:$(DLLOUT) $(OBJ_FILES) /LIBPATH:$(CUDA_SDK_LIB) /LIBPATH:$(FFTW_LIB) $(LIBS) /MACHINE:X86
 endif
 
 sim_2f.obj: sim_2f.cu
-	nvcc -c sim_2f.cu -o sim_2f.obj -I"$(CUDA_INC_PATH)" $(NVCC_FLAGS)
+	nvcc -c sim_2f.cu -o sim_2f.obj -I"$(CUDA_INC_PATH)" -I$(FFTW_LIB) $(NVCC_FLAGS)
 	
 sim_2d.obj: sim_2d.cu
-	nvcc -c sim_2d.cu -o sim_2d.obj -I"$(CUDA_INC_PATH)" $(NVCC_FLAGS)
+	nvcc -c sim_2d.cu -o sim_2d.obj -I"$(CUDA_INC_PATH)" -I$(FFTW_LIB) $(NVCC_FLAGS)
 
 sim_3d.obj: sim_3d.cu
-	nvcc -c sim_3d.cu -o sim_3d.obj -I"$(CUDA_INC_PATH)" $(NVCC_FLAGS)
+	nvcc -c sim_3d.cu -o sim_3d.obj -I"$(CUDA_INC_PATH)" -I$(FFTW_LIB) $(NVCC_FLAGS)
 	
 sim_3f.obj: sim_3f.cu
-	nvcc -c sim_3f.cu -o sim_3f.obj -I"$(CUDA_INC_PATH)" $(NVCC_FLAGS)
+	nvcc -c sim_3f.cu -o sim_3f.obj -I"$(CUDA_INC_PATH)" -I$(FFTW_LIB) $(NVCC_FLAGS)
 	
 utils.obj: utils.cpp
-	nvcc -c utils.cpp -o utils.obj -I"$(CUDA_INC_PATH)" $(NVCC_FLAGS)
+	nvcc -c utils.cpp -o utils.obj -I"$(CUDA_INC_PATH)" -I$(FFTW_LIB) $(NVCC_FLAGS)
 	
 fft.obj: fft.cu
-	nvcc -c fft.cu -o fft.obj -I"$(CUDA_INC_PATH)" $(NVCC_FLAGS)
+	nvcc -c fft.cu -o fft.obj -I"$(CUDA_INC_PATH)" -I$(FFTW_LIB) $(NVCC_FLAGS)
 	
 dist.obj: dist.cu
-	nvcc -c dist.cu -o dist.obj -I"$(CUDA_INC_PATH)" $(NVCC_FLAGS)
+	nvcc -c dist.cu -o dist.obj -I"$(CUDA_INC_PATH)" -I$(FFTW_LIB) $(NVCC_FLAGS)
+	
+simcpu_2d.obj: simcpu_2d.cpp
+	nvcc -c simcpu_2d.cpp -o simcpu_2d.obj -I$(FFTW_LIB) $(NVCC_FLAGS)
 	
 clean:
 	rm $(OBJ_FILES) *.linkinfo gpusim.exp gpusim.lib gpusim.dll

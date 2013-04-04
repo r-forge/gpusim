@@ -18,6 +18,44 @@ void writeCSVMatrix(const char *filename, float* matrix, int numRows, int numCol
 	file.close();
 }
 
+void writeCSVMatrix(const char *filename, double* matrix, int numRows, int numCols) {
+	using namespace std;
+	
+	fstream file;
+	file.open(filename, ios::out);
+	if (file.fail()) return;
+
+	for (int i=0; i<numRows; ++i) {
+		for (int j = 0; j<numCols; ++j) {
+			file << matrix[i * numCols + j] << " ";
+		}
+		file << "\n";
+	}
+	file.close();
+}
+void writeCSVMatrix(const char *filename, fftw_complex* matrix, int numRows, int numCols) {
+	using namespace std;
+	
+	fstream file;
+	file.open(filename, ios::out);
+	if (file.fail()) return;
+
+	for (int i=0; i<numRows; ++i) {
+		for (int j = 0; j<numCols; ++j) {
+			file << matrix[i * numCols + j][0] << " ";
+		}
+		file << "\n";
+	}
+	for (int i=0; i<numRows; ++i) {
+		for (int j = 0; j<numCols; ++j) {
+			file << matrix[i * numCols + j][1] << " ";
+		}
+		file << "\n";
+	}
+	file.close();
+}
+
+
 void writeCSVMatrix(const char *filename, cufftComplex* matrix, int numRows, int numCols) {
 	using namespace std;
 	
@@ -31,7 +69,6 @@ void writeCSVMatrix(const char *filename, cufftComplex* matrix, int numRows, int
 		}
 		file << "\n";
 	}
-	file << "\n";file << "\n";
 	for (int i=0; i<numRows; ++i) {
 		for (int j = 0; j<numCols; ++j) {
 			file << matrix[i * numCols + j].y << " ";
@@ -48,6 +85,24 @@ int ceil2(int n) {
 	while(out<n) out*=2;
 	return out;
 }
+
+
+
+void randGenerateNormal(double *buf, int n, double mu, double sigma) {
+	int i=0;
+	while(i<n-2) {
+		double r0 = (double)(rand()%(RAND_MAX-1)+1) / (double)RAND_MAX;
+		double r1 = (double)(rand()%(RAND_MAX-1)+1) / (double)RAND_MAX;
+		buf[i++] = mu + sigma*(sqrt(-2*log(r0)) * cos(2*PI*r1));
+		buf[i++] = mu + sigma*(sqrt(-2*log(r0)) * sin(2*PI*r1));
+	}
+	double r0 = (double)(rand()%(RAND_MAX-1)+1) / (double)RAND_MAX;
+	double r1 = (double)(rand()%(RAND_MAX-1)+1) / (double)RAND_MAX;
+	buf[i++] = mu + sigma*(sqrt(-2*log(r0)) * cos(2*PI*r1));
+	if (i < n) buf[i++] = mu + sigma*(sqrt(-2*log(r0)) * sin(2*PI*r1));
+}
+
+
 
 
 
@@ -369,6 +424,7 @@ void EXPORT dCov2d(double *out, double *xy, int *n, int *model, double *sill, do
 		}
 	}	
 }
+
 
 
 
