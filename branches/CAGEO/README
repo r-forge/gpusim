@@ -1,0 +1,10 @@
+
+A short introduction to the package can be found in <pkgroot>/doc/gpusim/gpusim.pdf. 
+This vignette contains installation instructions and some examples how to use the package.
+
+
+TO DO:
+- Check, if DUP=TRUE is necessary in dCov2d,dCov3d
+- documentation anisotropy argument
+- rewrite vignette
+- implement useful masking and aggregation functions
