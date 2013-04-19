@@ -24,7 +24,7 @@
 
 inline double covExpKernel_cpu_2d(double ax, double ay, double bx, double by, double sill, double range, double nugget) {
 	double dist = sqrt((ax-bx)*(ax-bx)+(ay-by)*(ay-by));
-	return ((dist == 0.0f)? (nugget + sill) : (sill*exp(-dist/range)));
+	return ((dist == 0.0)? (nugget + sill) : (sill*exp(-dist/range)));
 }
 
 
@@ -41,7 +41,7 @@ inline double covExpAnisKernel_cpu_2d(double ax, double ay, double bx, double by
 	dist += temp * temp;
 	dist = sqrt(dist);
 
-	return ((dist == 0.0f)? (nugget + sill) : (sill*exp(-dist/range)));
+	return ((dist == 0.0)? (nugget + sill) : (sill*exp(-dist/range)));
 }
 
 
@@ -49,7 +49,7 @@ inline double covExpAnisKernel_cpu_2d(double ax, double ay, double bx, double by
 
 inline double covGauKernel_cpu_2d(double ax, double ay, double bx, double by, double sill, double range, double nugget) {
 	double dist2 = (ax-bx)*(ax-bx)+(ay-by)*(ay-by);
-	return ((dist2 == 0.0f)? (nugget + sill) : (sill*exp(-dist2/(range*range))));
+	return ((dist2 == 0.0)? (nugget + sill) : (sill*exp(-dist2/(range*range))));
 }
 
 
@@ -66,7 +66,7 @@ inline double covGauAnisKernel_cpu_2d(double ax, double ay, double bx, double by
 	dist += temp * temp;
 	//dist = sqrtf(dist);
 
-	return ((dist == 0.0f)? (nugget + sill) : (sill*exp(-dist/(range*range))));
+	return ((dist == 0.0)? (nugget + sill) : (sill*exp(-dist/(range*range))));
 }
 
 
@@ -104,7 +104,7 @@ inline double covSphAnisKernel_cpu_2d(double ax, double ay, double bx, double by
 
 inline double covMat3Kernel_cpu_2d(double ax, double ay, double bx, double by, double sill, double range, double nugget) {
 	double dist = sqrt((ax-bx)*(ax-bx)+(ay-by)*(ay-by));
-	return ((dist == 0.0f)? (nugget + sill) : (sill*(1+SQRT3*dist/range)*exp(-SQRT3*dist/range)));
+	return ((dist == 0.0)? (nugget + sill) : (sill*(1+SQRT3*dist/range)*exp(-SQRT3*dist/range)));
 }
 
 
@@ -126,7 +126,7 @@ inline double covMat3AnisKernel_cpu_2d(double ax, double ay, double bx, double b
 
 inline double covMat5Kernel_cpu_2d(double ax, double ay, double bx, double by, double sill, double range, double nugget) {
 	double dist = sqrt((ax-bx)*(ax-bx)+(ay-by)*(ay-by));
-	return ((dist == 0.0f)? (nugget + sill) : (sill * (1 + SQRT5*dist/range + 5*dist*dist/3*range*range) * exp(-SQRT5*dist/range)));
+	return ((dist == 0.0)? (nugget + sill) : (sill * (1 + SQRT5*dist/range + 5*dist*dist/3*range*range) * exp(-SQRT5*dist/range)));
 }
 
 
@@ -154,7 +154,7 @@ void realToComplexKernel_cpu_2d(fftw_complex *c, double* r, int n) {
 	for (int i=0; i<n; ++i)
 	{
 		c[i][0] = r[i];
-		c[i][1] = 0.0f;
+		c[i][1] = 0.0;
 	}
 }
 
@@ -192,7 +192,7 @@ void sampleCovKernel_cpu_2d(fftw_complex *trickgrid, fftw_complex *grid, fftw_co
 				cov[row*n+col][0] = covMat5Kernel_cpu_2d(grid[row*n+col][0],grid[row*n+col][1],xc,yc,sill,range,nugget);
 				break;
 			}	
-
+			cov[row*n+col][1] = 0.0;
 			trickgrid[row*n+col][0] = 0.0;
 			trickgrid[row*n+col][1] = 0.0;	
 		}
@@ -223,6 +223,7 @@ void sampleCovAnisKernel_cpu_2d(fftw_complex *trickgrid, fftw_complex *grid, fft
 				cov[row*n+col][0] = covMat5AnisKernel_cpu_2d(grid[row*n+col][0],grid[row*n+col][1],xc,yc,sill,range,nugget,alpha,afac1);
 				break;
 			}	
+			cov[row*n+col][1] = 0.0;
 			trickgrid[row*n+col][0] = 0.0;
 			trickgrid[row*n+col][1] = 0.0;	
 		}
@@ -472,16 +473,16 @@ void residualsOrdinary_cpu_2d(double* res, double *srcdata, double *uncond_grid,
 
 		// Special case: last column / row
 		if (col > nx-1) {
-			x = 0.0f;col = nx-1;
+			x = 0.0;col = nx-1;
 		}
 		else if (col < 0) {
-			x = 0.0f;col=0;
+			x = 0.0;col=0;
 		}
 		if (row > nx-1) {
-			y = 0.0f;row = (int)(nx-y);
+			y = 0.0;row = (int)(nx-y);
 		}	
 		else if (row < 0) {
-			y = 0.0f;row=0;
+			y = 0.0;row=0;
 		}
 		res[id] = srcdata[id] - ((1-y) * ((1-x) * uncond_grid[row * nx + col] + x * uncond_grid[row * nx + col + 1]) + 
 								  y * ((1-x) * uncond_grid[(row+1) * nx + col] + x * uncond_grid[(row+1) * nx + col + 1]));
@@ -508,16 +509,16 @@ void residualsSimple_cpu_2d(double* res, double *srcdata, double *uncond_grid, d
 
 		// Special case: last column / row
 		if (col > nx-1) {
-			x = 0.0f;col = nx-1;
+			x = 0.0;col = nx-1;
 		}
 		else if (col < 0) {
-			x = 0.0f;col=0;
+			x = 0.0;col=0;
 		}
 		if (row > nx-1) {
-			y = 0.0f;row = (int)(nx-y);
+			y = 0.0;row = (int)(nx-y);
 		}	
 		else if (row < 0) {
-			y = 0.0f;row=0;
+			y = 0.0;row=0;
 		}
 		res[id] = srcdata[id] - mu - ((1-y) * ((1-x) * uncond_grid[row * nx + col] + x * uncond_grid[row * nx + col + 1]) + 
 								  y * ((1-x) * uncond_grid[(row+1) * nx + col] + x * uncond_grid[(row+1) * nx + col + 1]));
