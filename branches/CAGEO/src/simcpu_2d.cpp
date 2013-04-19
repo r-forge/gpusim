@@ -733,7 +733,7 @@ void EXPORT unconditionalSimRealizations_cpu_2d(double *p_out,  int *p_k, int *r
 	fftw_complex* amp = fftw_alloc_complex(uncond_global_cpu_2d.n * uncond_global_cpu_2d.m);
 	//double* out = (double*)malloc(sizeof(double)*uncond_global_cpu_2d.nx*uncond_global_cpu_2d.ny);
 
-	srand((unsigned int)(time(NULL)));
+	
 
     //Realisierungen in Schleife, d.h. lineare Laufzeit in Bezug auf Realisierungen
 	for(int l = 0; l<k; ++l) {

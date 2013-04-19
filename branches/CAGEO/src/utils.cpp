@@ -121,6 +121,9 @@ void EXPORT initSim(int *result) {
 			*result = ERROR_NO_DEVICE;
 		}
 		cublasInit();
+
+		srand((unsigned int)(time(NULL)));
+
 		*result = OK;
 	}
 
