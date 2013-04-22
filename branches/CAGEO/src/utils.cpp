@@ -78,6 +78,28 @@ void writeCSVMatrix(const char *filename, cufftComplex* matrix, int numRows, int
 	file.close();
 }
 
+void writeCSVMatrix(const char *filename, cufftDoubleComplex* matrix, int numRows, int numCols) {
+	using namespace std;
+	
+	fstream file;
+	file.open(filename, ios::out);
+	if (file.fail()) return;
+
+	for (int i=0; i<numRows; ++i) {
+		for (int j = 0; j<numCols; ++j) {
+			file << matrix[i * numCols + j].x << " ";
+		}
+		file << "\n";
+	}
+	for (int i=0; i<numRows; ++i) {
+		for (int j = 0; j<numCols; ++j) {
+			file << matrix[i * numCols + j].y << " ";
+		}
+		file << "\n";
+	}
+	file.close();
+}
+
 
 
 int ceil2(int n) {

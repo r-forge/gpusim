@@ -1,7 +1,7 @@
  
  
  
-.sim2f <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method = 'O', mu = 0, aggregation.features=NULL, aggregation.func=mean, gpu.cache = FALSE, as.sp = FALSE, check = FALSE, benchmark = FALSE, compute.stats = FALSE, anis=c(0,0,0,1,1), cpu.invertonly = FALSE) {
+.sim2f <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method = 'O', mu = 0, aggregation.features=NULL, aggregation.func=mean, gpu.cache = FALSE, as.sp = FALSE, neg.eigenvals.action = "ignore", benchmark = FALSE, compute.stats = FALSE, anis=c(0,0,0,1,1), cpu.invertonly = FALSE) {
 	
 	if (benchmark) {
 		times = c() # runtimes of single computation steps
@@ -238,8 +238,10 @@
 		
 		res <- 0		
 		retcode = 0
+		check = (neg.eigenvals.action == "error")
+		seteigenvalszero = (neg.eigenvals.action == "setzero")
 		if (benchmark) .gpuSimStartTimer()
-		result = .C("conditionalSimInit_2f", as.single(xmin), as.single(xmax), as.integer(nx), as.single(ymin),as.single(ymax), as.integer(ny), as.single(sill), as.single(range), as.single(nugget), as.single(t(coordinates(samples))), as.single(srcData), as.integer(numSrc), as.integer(.covID(covmodel)), as.single(anis[1]), as.single(anis[4]), as.integer(check), as.integer(.gpuSimKrigeMethod(kriging.method)), as.single(mu), as.integer(gpu.cache), as.integer(cpu.invertonly), retcode = as.integer(retcode), PACKAGE="gpusim")
+		result = .C("conditionalSimInit_2f", as.single(xmin), as.single(xmax), as.integer(nx), as.single(ymin),as.single(ymax), as.integer(ny), as.single(sill), as.single(range), as.single(nugget), as.single(t(coordinates(samples))), as.single(srcData), as.integer(numSrc), as.integer(.covID(covmodel)), as.single(anis[1]), as.single(anis[4]), as.integer(check), as.integer(seteigenvalszero), as.integer(.gpuSimKrigeMethod(kriging.method)), as.single(mu), as.integer(gpu.cache), as.integer(cpu.invertonly), retcode = as.integer(retcode), PACKAGE="gpusim")
 		if (result$retcode != 0) stop(paste("Initialization of conditional simulation returned error: ",.gpuSimCatchError(result$retcode)))
 		if (benchmark) {
 			t1 = .gpuSimStopTimer()
@@ -375,9 +377,10 @@
 		
 		
 		retcode = 0
-		
+		check = (neg.eigenvals.action == "error")
+		seteigenvalszero = (neg.eigenvals.action == "setzero")
 		if (benchmark) .gpuSimStartTimer()
-		result = .C("unconditionalSimInit_2f", as.single(xmin), as.single(xmax), as.integer(nx), as.single(ymin),as.single(ymax), as.integer(ny), as.single(sill), as.single(range), as.single(nugget), as.integer(.covID(covmodel)), as.single(anis[1]), as.single(anis[4]), as.integer(check), retcode = as.integer(retcode), PACKAGE="gpusim")
+		result = .C("unconditionalSimInit_2f", as.single(xmin), as.single(xmax), as.integer(nx), as.single(ymin),as.single(ymax), as.integer(ny), as.single(sill), as.single(range), as.single(nugget), as.integer(.covID(covmodel)), as.single(anis[1]), as.single(anis[4]), as.integer(check), as.integer(seteigenvalszero), retcode = as.integer(retcode), PACKAGE="gpusim")
 		if (result$retcode != 0) stop(paste("Initialization of unconditional simulation returned error: ",.gpuSimCatchError(result$retcode)))			
 		if (benchmark) {
 			t1 = .gpuSimStopTimer()

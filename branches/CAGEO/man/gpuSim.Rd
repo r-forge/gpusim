@@ -7,7 +7,7 @@ Performs (un)conditional simulation of gaussian random fields using NVIDIAs CUDA
 }
 
 \usage{
-gpuSim(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method='O', mu=0, aggregation.features=NULL, aggregation.func=mean, gpu.cache=TRUE, as.sp=FALSE, check=FALSE, benchmark=FALSE, prec.double=FALSE, compute.stats=FALSE, anis=c(0,0,0,1,1))
+gpuSim(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method='O', mu=0, aggregation.features=NULL, aggregation.func=mean, gpu.cache=TRUE, as.sp=FALSE, neg.eigenvals.action="ignore", benchmark=FALSE, prec.double=FALSE, compute.stats=FALSE, anis=c(0,0,0,1,1))
 }
 
 \arguments{
@@ -32,7 +32,7 @@ gpuSim(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method='
 	\item{aggregation.func}{Function used for polygon aggregation (e.g. mean or sd)}
 	\item{gpu.cache}{For conditional simulation: Use GPU memory to cache all unconditional realizations? Requires more GPU memory but less copying between CPU / GPU.}
 	\item{as.sp}{TRUE or FALSE, should result be returned as SpatialPixelsDataFrame or as an simple array?}
-	\item{check}{TRUE or FALSE, should fft of covariance matrix be checked for negative real parts?}
+	\item{neg.eigenvals.action}{Defines the action performed when negative eigenvalues occur in the circulant matrix. Default is "ignore", other possible values are "setzero" or "error"}
 	\item{benchmark}{If TRUE, detailed information about computation times of internally called functions is given.}
 	\item{prec.double}{If TRUE, double precision is used. Notice that the performance for double precision strongly depends on the available hardware.}
 	\item{compute.stats}{If TRUE, two additional realizations will be added to the output containing the pixelwise mean and standard deviations over all realizations.}
@@ -183,7 +183,7 @@ samples = data.frame(x=sample_x, y=sample_y, z=sample_z)
 coordinates(samples)=c("x","y","z")
 samples = SpatialPointsDataFrame(samples,as.data.frame(sample_data))
 
-simGPUcond = gpuSim(grid, model, sill, range, nugget, k, samples,check=F,anis=anis,prec.double=T)
+simGPUcond = gpuSim(grid, model, sill, range, nugget, k, samples,anis=anis,prec.double=T)
 
 # animation of second realization
 for (i in 1:dim(simGPUcond)[3]) {

@@ -265,7 +265,14 @@ __global__ void divideSpectrumKernel_2f(cufftComplex *spectrum, cufftComplex *ff
 	spectrum[i].y = (b*c-a*d)/(c*c+d*d);
 }
 
-
+// Sets negative real parts of cov grid to 0
+__global__ void setCov0Kernel(cufftComplex *cov, int nm)
+{
+	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	if (i < nm) {
+		if (cov[i].x < 0.0f) cov[i].x = 0.0f;
+	}
+}
 
 
 
@@ -667,7 +674,7 @@ extern "C" {
 
 void EXPORT unconditionalSimInit_2f(float *p_xmin, float *p_xmax, int *p_nx, float *p_ymin, float *p_ymax, int *p_ny, 
 									float *p_sill, float *p_range, float *p_nugget, int *p_covmodel, float *p_anis_direction, 
-									float *p_anis_ratio, int *do_check, int *ret_code) {
+									float *p_anis_ratio, int *do_check, int *set_cov_to_zero,  int *ret_code) {
 	*ret_code = OK;
 	cudaError_t cudaStatus;
 	
@@ -825,11 +832,17 @@ void EXPORT unconditionalSimInit_2f(float *p_xmin, float *p_xmax, int *p_nx, flo
 #endif*/
 
 
+	if (*set_cov_to_zero) {
+		setCov0Kernel<<<uncond_global_2f.blockCount1d, uncond_global_2f.blockSize1d>>>(uncond_global_2f.d_cov, uncond_global_2f.n*uncond_global_2f.m);	
+		cudaStatus = cudaThreadSynchronize();
+		if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching setCov0Kernel!\n", cudaStatus);	
+	}
 
 	// Copy to host and check for negative real parts
 	if (*do_check) {
 		cufftComplex *h_cov = (cufftComplex*)malloc(sizeof(cufftComplex)*uncond_global_2f.n*uncond_global_2f.m);
 		cudaStatus = cudaMemcpy(h_cov,uncond_global_2f.d_cov,sizeof(cufftComplex)*uncond_global_2f.n*uncond_global_2f.m,cudaMemcpyDeviceToHost);
+		//writeCSVMatrix("C:\\fft\\circulantm.csv",h_cov,uncond_global_2f.m,uncond_global_2f.n);
 		for (int i=0; i<uncond_global_2f.n*uncond_global_2f.m; ++i) {
 			if (h_cov[i].x < 0.0) {
 				*ret_code = ERROR_NEGATIVE_COV_VALUES; 
@@ -996,7 +1009,7 @@ extern "C" {
 
 void EXPORT conditionalSimInit_2f(float *p_xmin, float *p_xmax, int *p_nx, float *p_ymin, float *p_ymax, int *p_ny, float *p_sill, 
 								  float *p_range, float *p_nugget, float *p_srcXY, float *p_srcData, int *p_numSrc, int *p_covmodel, 
-								  float *p_anis_direction, float *p_anis_ratio, int *do_check, int *krige_method, float *mu, int *uncond_gpucache, int *cpuinvertonly, int *ret_code) {
+								  float *p_anis_direction, float *p_anis_ratio, int *do_check, int *set_cov_to_zero, int *krige_method, float *mu, int *uncond_gpucache, int *cpuinvertonly, int *ret_code) {
 	*ret_code = OK;
 	cudaError_t cudaStatus;
 
@@ -1102,10 +1115,17 @@ void EXPORT conditionalSimInit_2f(float *p_xmin, float *p_xmax, int *p_nx, float
 	if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching divideSpectrumKernel_2f!\n", cudaStatus);	
 	cudaFree(d_trick_grid_c);
 
+	if (*set_cov_to_zero) {
+		setCov0Kernel<<<cond_global_2f.blockCount1d, cond_global_2f.blockSize1d>>>(cond_global_2f.d_cov, cond_global_2f.n*cond_global_2f.m);	
+		cudaStatus = cudaThreadSynchronize();
+		if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching setCov0Kernel!\n", cudaStatus);	
+	}
+
 	// Copy to host and check for negative real parts
 	if (*do_check) {
 		cufftComplex *h_cov = (cufftComplex*)malloc(sizeof(cufftComplex)*cond_global_2f.n*cond_global_2f.m);
 		cudaStatus = cudaMemcpy(h_cov,cond_global_2f.d_cov,sizeof(cufftComplex)*cond_global_2f.n*cond_global_2f.m,cudaMemcpyDeviceToHost);
+		//writeCSVMatrix("C:\\fft\\circulantm.csv",h_cov,cond_global_2f.m,cond_global_2f.n);
 		for (int i=0; i<cond_global_2f.n*cond_global_2f.m; ++i) {
 			if (h_cov[i].x < 0.0) {
 				*ret_code = ERROR_NEGATIVE_COV_VALUES; 

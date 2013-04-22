@@ -255,6 +255,18 @@ void divideSpectrumKernel_cpu_2d(fftw_complex *spectrum, fftw_complex *fftgrid, 
 	}
 }
 
+// Sets negative real parts of cov grid to 0
+ void setCov0Kernel_cpu_2d(fftw_complex *cov, int nm)
+{
+	for (int i = 0; i < nm; ++i) 
+	{
+		if (i < nm) {
+			if (cov[i][0] < 0.0) cov[i][0] = 0.0;
+		}
+	}
+}
+
+
 
 
 
@@ -557,7 +569,7 @@ extern "C" {
 
 void EXPORT unconditionalSimInit_cpu_2d(double *p_xmin, double *p_xmax, int *p_nx, double *p_ymin, double *p_ymax, int *p_ny, 
 									double *p_sill, double *p_range, double *p_nugget, int *p_covmodel, double *p_anis_direction, 
-									double *p_anis_ratio, int *do_check, int *ret_code) {
+									double *p_anis_ratio, int *do_check, int *set_cov_to_zero,  int *ret_code) {
 	*ret_code = OK;
 	
 	uncond_global_cpu_2d.nx= *p_nx; // Number of cols
@@ -689,22 +701,22 @@ void EXPORT unconditionalSimInit_cpu_2d(double *p_xmin, double *p_xmax, int *p_n
 	fftw_free(trick_grid_c);
 
 
+	if (*set_cov_to_zero) {
+		setCov0Kernel_cpu_2d(uncond_global_cpu_2d.cov, uncond_global_cpu_2d.n*uncond_global_cpu_2d.m);	
+	}
 
-	// Copy to host and check for negative real parts
+
 	if (*do_check) {
-		fftw_complex *h_cov = fftw_alloc_complex(uncond_global_cpu_2d.n*uncond_global_cpu_2d.m);
+		//writeCSVMatrix("C:\\fft\\circulantm.csv",uncond_global_cpu_2d.cov,uncond_global_cpu_2d.m,uncond_global_cpu_2d.n);
 		for (int i=0; i<uncond_global_cpu_2d.n*uncond_global_cpu_2d.m; ++i) {
-			if (h_cov[i][0] < 0.0) {
+			if (uncond_global_cpu_2d.cov[i][0] < 0.0) {
 				*ret_code = ERROR_NEGATIVE_COV_VALUES; 
-				free(h_cov);
-				//cudaFree(uncond_global_cpu_2d.d_cov);
 				fftw_free(uncond_global_cpu_2d.cov);
 				fftw_destroy_plan(uncond_global_cpu_2d.plan1);
 				fftw_destroy_plan(uncond_global_cpu_2d.plan2);
 				return;
 			}	
 		}
-		fftw_free(h_cov);
 	}
 
 	// Compute sqrt of cov grid
@@ -732,8 +744,6 @@ void EXPORT unconditionalSimRealizations_cpu_2d(double *p_out,  int *p_k, int *r
 	fftw_complex *fftrand = fftw_alloc_complex(uncond_global_cpu_2d.n * uncond_global_cpu_2d.m);
 	fftw_complex* amp = fftw_alloc_complex(uncond_global_cpu_2d.n * uncond_global_cpu_2d.m);
 	//double* out = (double*)malloc(sizeof(double)*uncond_global_cpu_2d.nx*uncond_global_cpu_2d.ny);
-
-	
 
     //Realisierungen in Schleife, d.h. lineare Laufzeit in Bezug auf Realisierungen
 	for(int l = 0; l<k; ++l) {
@@ -885,7 +895,7 @@ extern "C" {
 void EXPORT conditionalSimInit_cpu_2d(double *p_xmin, double *p_xmax, int *p_nx, double *p_ymin, double *p_ymax, 
 								  int *p_ny, double *p_sill, double *p_range, double *p_nugget, double *p_srcXY, 
 								  double *p_srcData, int *p_numSrc, int *p_covmodel, double *p_anis_direction, 
-								  double *p_anis_ratio, int *do_check, int *krige_method, double *mu, int *ret_code) {
+								  double *p_anis_ratio, int *do_check, int *set_cov_to_zero,  int *krige_method, double *mu, int *ret_code) {
 	*ret_code = OK;
 
 	cond_global_cpu_2d.nx= *p_nx; // Number of cols
@@ -963,8 +973,16 @@ void EXPORT conditionalSimInit_cpu_2d(double *p_xmin, double *p_xmax, int *p_nx,
 
 	fftw_free(trick_grid_c);
 
+
+	if (*set_cov_to_zero) {
+		setCov0Kernel_cpu_2d(cond_global_cpu_2d.cov, cond_global_cpu_2d.n*cond_global_cpu_2d.m);	
+	}
+
+
+
 	// Copy to host and check for negative real parts
 	if (*do_check) {
+		//writeCSVMatrix("C:\\fft\\circulantm.csv",cond_global_cpu_2d.cov,cond_global_cpu_2d.m,cond_global_cpu_2d.n);	
 		for (int i=0; i<cond_global_cpu_2d.n*cond_global_cpu_2d.m; ++i) {
 			if (cond_global_cpu_2d.cov[i][0] < 0.0) {
 				*ret_code = ERROR_NEGATIVE_COV_VALUES; 

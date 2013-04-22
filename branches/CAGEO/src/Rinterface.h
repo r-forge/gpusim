@@ -13,9 +13,10 @@
 #include <sstream>
 #include <math.h>
 #include <fstream>
+#include <iomanip>
 #include <cuda.h>
 #include <string>
-
+#include <fftw3.h>
 
 #ifdef _WIN32
 #define EXPORT __declspec(dllexport)
@@ -37,7 +38,7 @@ enum errcode {OK=0, ERROR_NEGATIVE_COV_VALUES=1, ERROR_UNKNOWN = 2, ERROR_NO_DEV
 
 
 
-/*
+
 
 #ifdef __cplusplus
 extern "C" {
@@ -60,47 +61,54 @@ extern "C" {
 
 
 
-	void EXPORT unconditionalSimInit_2f(double *p_xmin, double *p_xmax, int *p_nx, double *p_ymin, double *p_ymax, int *p_ny, double *p_sill, double *p_range, double *p_nugget, int *p_covmodel, int *do_check, int *ret_code);
-	void EXPORT unconditionalSimRealizations_2f(double *p_out,  int *p_k, int *ret_code);
+	void EXPORT unconditionalSimInit_2f(float *p_xmin, float *p_xmax, int *p_nx, float *p_ymin, float *p_ymax, int *p_ny, float *p_sill, float *p_range, float *p_nugget, int *p_covmodel, float *p_anis_direction, float *p_anis_ratio, int *do_check, int *set_cov_to_zero,  int *ret_code);
+	void EXPORT unconditionalSimRealizations_2f(float *p_out,  int *p_k, int *ret_code);
 	void EXPORT unconditionalSimRelease_2f(int *ret_code);
 
-	void EXPORT conditionalSimInit_2f(double *p_xmin, double *p_xmax, int *p_nx, double *p_ymin, double *p_ymax, int *p_ny, double *p_sill, double *p_range, double *p_nugget, double *p_srcXY, double *p_srcData, int *p_numSrc, int *p_covmodel, int *do_check, int *krige_method, double *mu, int *ret_code);
-	void EXPORT conditionalSimUncondResiduals_2f(double *p_out, int *p_k, int *ret_code);
-	void EXPORT conditionalSimKrigeResiduals_2f(double *p_out, double *p_y, int *ret_code);
-	void EXPORT conditionalSimSimpleKrigeResiduals_2f(double *p_out, double *p_y, int *ret_code);
+	void EXPORT conditionalSimInit_2f(float *p_xmin, float *p_xmax, int *p_nx, float *p_ymin, float *p_ymax, int *p_ny, float *p_sill, float *p_range, float *p_nugget, float *p_srcXY, float *p_srcData, int *p_numSrc, int *p_covmodel, float *p_anis_direction, float *p_anis_ratio, int *do_check, int *set_cov_to_zero,  int *krige_method, float *mu, int *uncond_gpucache, int *cpuinvertonly, int *ret_code);
+	void EXPORT conditionalSimUncondResiduals_2f(float *p_out, int *p_k, int *ret_code);
+	void EXPORT conditionalSimKrigeResiduals_2f(float *p_out, float *p_y, int *ret_code);
+	void EXPORT conditionalSimSimpleKrigeResiduals_2f(float *p_out, float *p_y, int *ret_code);
 	void EXPORT conditionalSimRelease_2f(int *ret_code);
 
-	void EXPORT conditioningInit_2f(double *p_xmin, double *p_xmax, int *p_nx, double *p_ymin, double *p_ymax, int *p_ny, double *p_sill, double *p_range, double *p_nugget, double *p_srcXY, double *p_srcData, int *p_numSrc,  int *p_k, double *p_uncond, int *p_covmodel, int *krige_method, double *mu, int *ret_code);
-	void EXPORT conditioningResiduals_2f(double *p_out, int *ret_code);
-	void EXPORT conditioningKrigeResiduals_2f(double *p_out, double *p_y, int *ret_code);
-	void EXPORT conditioningSimpleKrigeResiduals_2f(double *p_out, double *p_y, int *ret_code);
+	void EXPORT conditioningInit_2f(float *p_xmin, float *p_xmax, int *p_nx, float *p_ymin, float *p_ymax, int *p_ny, float *p_sill, float *p_range, float *p_nugget, float *p_srcXY, float *p_srcData, int *p_numSrc,  int *p_k, float *p_uncond, int *p_covmodel, float *p_anis_direction, float *p_anis_ratio,int *krige_method, float *mu, int *ret_code);
+	void EXPORT conditioningResiduals_2f(float *p_out, int *ret_code);
+	void EXPORT conditioningKrigeResiduals_2f(float *p_out, float *p_y, int *ret_code);
+	void EXPORT conditioningSimpleKrigeResiduals_2f(float *p_out, float *p_y, int *ret_code);
 	void EXPORT conditioningRelease_2f(int *ret_code);
 
 
 
 
-
-	void EXPORT unconditionalSimInit_2d(double *p_xmin, double *p_xmax, int *p_nx, double *p_ymin, double *p_ymax, int *p_ny, double *p_sill, double *p_range, double *p_nugget, int *p_covmodel, int *do_check, int *ret_code);
+	void EXPORT unconditionalSimInit_2d(double *p_xmin, double *p_xmax, int *p_nx, double *p_ymin, double *p_ymax, int *p_ny, double *p_sill, double *p_range, double *p_nugget, int *p_covmodel, double *p_anis_direction, double *p_anis_ratio, int *do_check, int *set_cov_to_zero,  int *ret_code);
 	void EXPORT unconditionalSimRealizations_2d(double *p_out,  int *p_k, int *ret_code);
 	void EXPORT unconditionalSimRelease_2d(int *ret_code);
 
-	void EXPORT conditionalSimInit_2d(double *p_xmin, double *p_xmax, int *p_nx, double *p_ymin, double *p_ymax, int *p_ny, double *p_sill, double *p_range, double *p_nugget, double *p_srcXY, double *p_srcData, int *p_numSrc, int *p_covmodel, int *do_check, int *krige_method, double *mu, int *ret_code);
+	void EXPORT conditionalSimInit_2d(double *p_xmin, double *p_xmax, int *p_nx, double *p_ymin, double *p_ymax, int *p_ny, double *p_sill, double *p_range, double *p_nugget, double *p_srcXY,  double *p_srcData, int *p_numSrc, int *p_covmodel, double *p_anis_direction, double *p_anis_ratio, int *do_check,int *set_cov_to_zero,  int *krige_method, double *mu, int *uncond_gpucache, int *cpuinvertonly, int *ret_code);
 	void EXPORT conditionalSimUncondResiduals_2d(double *p_out, int *p_k, int *ret_code);
 	void EXPORT conditionalSimKrigeResiduals_2d(double *p_out, double *p_y, int *ret_code);
 	void EXPORT conditionalSimSimpleKrigeResiduals_2d(double *p_out, double *p_y, int *ret_code);
 	void EXPORT conditionalSimRelease_2d(int *ret_code);
 
-	void EXPORT conditioningInit_2d(double *p_xmin, double *p_xmax, int *p_nx, double *p_ymin, double *p_ymax, int *p_ny, double *p_sill, double *p_range, double *p_nugget, double *p_srcXY, double *p_srcData, int *p_numSrc,  int *p_k, double *p_uncond, int *p_covmodel, int *krige_method, double *mu, int *ret_code);
+	void EXPORT conditioningInit_2d(double *p_xmin, double *p_xmax, int *p_nx, double *p_ymin, double *p_ymax, int *p_ny, double *p_sill, double *p_range, double *p_nugget, double *p_srcXY, double *p_srcData, int *p_numSrc,  int *p_k, double *p_uncond, int *p_covmodel, double *p_anis_direction, double *p_anis_ratio, int *krige_method, double *mu, int *ret_code);
 	void EXPORT conditioningResiduals_2d(double *p_out, int *ret_code);
 	void EXPORT conditioningKrigeResiduals_2d(double *p_out, double *p_y, int *ret_code);
 	void EXPORT conditioningSimpleKrigeResiduals_2d(double *p_out, double *p_y, int *ret_code);
 	void EXPORT conditioningRelease_2d(int *ret_code);
 
 
+	void EXPORT unconditionalSimInit_cpu_2d(double *p_xmin, double *p_xmax, int *p_nx, double *p_ymin, double *p_ymax, int *p_ny, double *p_sill, double *p_range, double *p_nugget, int *p_covmodel, double *p_anis_direction, double *p_anis_ratio, int *do_check,int *set_cov_to_zero,  int *ret_code);
+	void EXPORT unconditionalSimRealizations_cpu_2d(double *p_out,  int *p_k, int *ret_code);
+	void EXPORT unconditionalSimRelease_cpu_2d(int *ret_code);
+
+	void EXPORT conditionalSimInit_cpu_2d(double *p_xmin, double *p_xmax, int *p_nx, double *p_ymin, double *p_ymax, int *p_ny, double *p_sill, double *p_range, double *p_nugget, double *p_srcXY, double *p_srcData, int *p_numSrc, int *p_covmodel, double *p_anis_direction,  double *p_anis_ratio, int *do_check, int *set_cov_to_zero, int *krige_method, double *mu, int *ret_code);
+	void EXPORT conditionalSimUncondResiduals_cpu_2d(double *p_out, int *p_k, int *ret_code);
+	void EXPORT conditionalSimKrigeResiduals_cpu_2d(double *p_out, double *p_y, int *ret_code);
+	void EXPORT conditionalSimSimpleKrigeResiduals_2d(double *p_out, double *p_y, int *ret_code);
+	void EXPORT conditionalSimRelease_cpu_2d(int *ret_code);
 
 #ifdef __cplusplus
 }
 #endif
 
 
-*/
