@@ -244,13 +244,14 @@ void multKernel_cpu_2d(fftw_complex *fftgrid, int n, int m) {
 }
 
 
-void divideSpectrumKernel_cpu_2d(fftw_complex *spectrum, fftw_complex *fftgrid, int n, int m) {
+void divideSpectrumKernel_cpu_2d(fftw_complex *spectrum, fftw_complex *fftgrid, int n, int m, double eigenvals_tol) {
 	for (int i=0; i<n*m; ++i) {
 		double a = spectrum[i][0];
 		double b = spectrum[i][1];
 		double c = fftgrid[i][0];
 		double d = fftgrid[i][1];
 		spectrum[i][0] = (a*c+b*d)/(c*c+d*d);
+		if (spectrum[i][0] < 0 && spectrum[i][0] > eigenvals_tol) spectrum[i][0] = 0.0;
 		spectrum[i][1] = (b*c-a*d)/(c*c+d*d);
 	}
 }
@@ -569,7 +570,7 @@ extern "C" {
 
 void EXPORT unconditionalSimInit_cpu_2d(double *p_xmin, double *p_xmax, int *p_nx, double *p_ymin, double *p_ymax, int *p_ny, 
 									double *p_sill, double *p_range, double *p_nugget, int *p_covmodel, double *p_anis_direction, 
-									double *p_anis_ratio, int *do_check, int *set_cov_to_zero,  int *ret_code) {
+									double *p_anis_ratio, int *do_check, int *set_cov_to_zero, double *eigenvals_tol, int *ret_code) {
 	*ret_code = OK;
 	
 	uncond_global_cpu_2d.nx= *p_nx; // Number of cols
@@ -688,7 +689,7 @@ void EXPORT unconditionalSimInit_cpu_2d(double *p_xmin, double *p_xmax, int *p_n
 #endif
 
 	// Devide spectral covariance grid by "trick" grid
-	divideSpectrumKernel_cpu_2d(uncond_global_cpu_2d.cov, trick_grid_c,uncond_global_cpu_2d.n, uncond_global_cpu_2d.m);	
+	divideSpectrumKernel_cpu_2d(uncond_global_cpu_2d.cov, trick_grid_c,uncond_global_cpu_2d.n, uncond_global_cpu_2d.m,*eigenvals_tol);	
 	
 	
 	#ifdef DEBUG 
@@ -895,7 +896,7 @@ extern "C" {
 void EXPORT conditionalSimInit_cpu_2d(double *p_xmin, double *p_xmax, int *p_nx, double *p_ymin, double *p_ymax, 
 								  int *p_ny, double *p_sill, double *p_range, double *p_nugget, double *p_srcXY, 
 								  double *p_srcData, int *p_numSrc, int *p_covmodel, double *p_anis_direction, 
-								  double *p_anis_ratio, int *do_check, int *set_cov_to_zero,  int *krige_method, double *mu, int *ret_code) {
+								  double *p_anis_ratio, int *do_check, int *set_cov_to_zero, double *eigenvals_tol, int *krige_method, double *mu, int *ret_code) {
 	*ret_code = OK;
 
 	cond_global_cpu_2d.nx= *p_nx; // Number of cols
@@ -969,7 +970,7 @@ void EXPORT conditionalSimInit_cpu_2d(double *p_xmin, double *p_xmax, int *p_nx,
 	
 
 	// Devide spectral cov grid by fft of "trick" grid
-	divideSpectrumKernel_cpu_2d(cond_global_cpu_2d.cov, trick_grid_c,cond_global_cpu_2d.n, cond_global_cpu_2d.m);	
+	divideSpectrumKernel_cpu_2d(cond_global_cpu_2d.cov, trick_grid_c,cond_global_cpu_2d.n, cond_global_cpu_2d.m,*eigenvals_tol);	
 
 	fftw_free(trick_grid_c);
 

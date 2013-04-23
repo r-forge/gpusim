@@ -3,7 +3,7 @@
 
 # Error codes must be in accordance to c code
  .gpuSimCatchError <- function(code) {
-	messages = c("successful", "fft of covariance matrix contains negative real parts", "unknown error returned", "no device found")
+	messages = c("successful", "circulant matrix contains negative eigenvalues", "unknown error returned", "no device found")
 	return (messages[code+1])
  }
  

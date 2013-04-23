@@ -255,13 +255,14 @@ __global__ void multKernel_2f(cufftComplex *fftgrid, int n, int m) {
 
 
 // Devides spectral grid elementwise by fftgrid
-__global__ void divideSpectrumKernel_2f(cufftComplex *spectrum, cufftComplex *fftgrid) {
+__global__ void divideSpectrumKernel_2f(cufftComplex *spectrum, cufftComplex *fftgrid, float eigenvals_tol) {
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
 	float a = spectrum[i].x;
 	float b = spectrum[i].y;
 	float c = fftgrid[i].x;
 	float d = fftgrid[i].y;
 	spectrum[i].x = (a*c+b*d)/(c*c+d*d);
+	if (spectrum[i].x < 0 && spectrum[i].x > eigenvals_tol) spectrum[i].x = 0.0f;
 	spectrum[i].y = (b*c-a*d)/(c*c+d*d);
 }
 
@@ -674,7 +675,7 @@ extern "C" {
 
 void EXPORT unconditionalSimInit_2f(float *p_xmin, float *p_xmax, int *p_nx, float *p_ymin, float *p_ymax, int *p_ny, 
 									float *p_sill, float *p_range, float *p_nugget, int *p_covmodel, float *p_anis_direction, 
-									float *p_anis_ratio, int *do_check, int *set_cov_to_zero,  int *ret_code) {
+									float *p_anis_ratio, int *do_check, int *set_cov_to_zero, float *eigenvals_tol, int *ret_code) {
 	*ret_code = OK;
 	cudaError_t cudaStatus;
 	
@@ -816,7 +817,7 @@ void EXPORT unconditionalSimInit_2f(float *p_xmin, float *p_xmax, int *p_nx, flo
 
 
 	// Devide spectral covariance grid by "trick" grid
-	divideSpectrumKernel_2f<<<uncond_global_2f.blockCount1d, uncond_global_2f.blockSize1d>>>(uncond_global_2f.d_cov, d_trick_grid_c);	
+	divideSpectrumKernel_2f<<<uncond_global_2f.blockCount1d, uncond_global_2f.blockSize1d>>>(uncond_global_2f.d_cov, d_trick_grid_c, *eigenvals_tol);	
 	cudaStatus = cudaThreadSynchronize();
 	if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching divideSpectrumKernel_2f!\n", cudaStatus);	
 	cudaFree(d_trick_grid_c);
@@ -1009,7 +1010,7 @@ extern "C" {
 
 void EXPORT conditionalSimInit_2f(float *p_xmin, float *p_xmax, int *p_nx, float *p_ymin, float *p_ymax, int *p_ny, float *p_sill, 
 								  float *p_range, float *p_nugget, float *p_srcXY, float *p_srcData, int *p_numSrc, int *p_covmodel, 
-								  float *p_anis_direction, float *p_anis_ratio, int *do_check, int *set_cov_to_zero, int *krige_method, float *mu, int *uncond_gpucache, int *cpuinvertonly, int *ret_code) {
+								  float *p_anis_direction, float *p_anis_ratio, int *do_check, int *set_cov_to_zero, float *eigenvals_tol, int *krige_method, float *mu, int *uncond_gpucache, int *cpuinvertonly, int *ret_code) {
 	*ret_code = OK;
 	cudaError_t cudaStatus;
 
@@ -1110,7 +1111,7 @@ void EXPORT conditionalSimInit_2f(float *p_xmin, float *p_xmax, int *p_nx, float
 	if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching multKernel_2f!\n", cudaStatus);	
 
 	// Devide spectral cov grid by fft of "trick" grid
-	divideSpectrumKernel_2f<<<cond_global_2f.blockCount1d, cond_global_2f.blockSize1d>>>(cond_global_2f.d_cov, d_trick_grid_c);	
+	divideSpectrumKernel_2f<<<cond_global_2f.blockCount1d, cond_global_2f.blockSize1d>>>(cond_global_2f.d_cov, d_trick_grid_c,*eigenvals_tol);	
 	cudaStatus = cudaThreadSynchronize();
 	if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching divideSpectrumKernel_2f!\n", cudaStatus);	
 	cudaFree(d_trick_grid_c);

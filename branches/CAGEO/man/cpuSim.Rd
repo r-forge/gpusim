@@ -7,7 +7,7 @@ Performs (un)conditional simulation of gaussian random fields using FFTW.
 }
 
 \usage{
-cpuSim(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method='O', mu=0, aggregation.features=NULL, aggregation.func=mean, gpu.cache=TRUE, as.sp=FALSE, neg.eigenvals.action="ignore", benchmark=FALSE, compute.stats=FALSE, anis=c(0,0,0,1,1))
+cpuSim(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method='O', mu=0, aggregation.features=NULL, aggregation.func=mean, gpu.cache=TRUE, as.sp=FALSE, neg.eigenvals.action="ignore",eigenvals.tol=-1e-07, benchmark=FALSE, compute.stats=FALSE, anis=c(0,0,0,1,1))
 }
 
 \arguments{
@@ -32,6 +32,7 @@ cpuSim(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method='
 	\item{aggregation.func}{Function used for polygon aggregation (e.g. mean or sd)}
 	\item{as.sp}{TRUE or FALSE, should result be returned as SpatialPixelsDataFrame or as an simple array?}
 	\item{neg.eigenvals.action}{Defines the action performed when negative eigenvalues occur in the circulant matrix. Default is "ignore", other possible values are "setzero" or "error"}
+	\item{eigenvals.tol}{Defines the minimum negative value that is interpreted as and set to 0 of eigenvalues of the circulant matrix}
 	\item{benchmark}{If TRUE, detailed information about computation times of internally called functions is given.}
 	\item{compute.stats}{If TRUE, two additional realizations will be added to the output containing the pixelwise mean and standard deviations over all realizations.}
 	\item{anis}{Anisotropy argument, see ?vgm from gstat package for further information}

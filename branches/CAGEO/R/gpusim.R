@@ -16,7 +16,7 @@
  }
 
 
-gpuSim <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method='O', mu=0, aggregation.features=NULL, aggregation.func=mean, gpu.cache=TRUE, as.sp=FALSE, neg.eigenvals.action = "ignore",  benchmark=FALSE, prec.double=FALSE, compute.stats=FALSE, anis=c(0,0,0,1,1), cpu.invertonly=FALSE) {
+gpuSim <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method='O', mu=0, aggregation.features=NULL, aggregation.func=mean, gpu.cache=TRUE, as.sp=FALSE, neg.eigenvals.action = "ignore", eigenvals.tol=-1e-07,  benchmark=FALSE, prec.double=FALSE, compute.stats=FALSE, anis=c(0,0,0,1,1), cpu.invertonly=FALSE) {
 	
 	if (missing(grid)) {
 		stop("Error: Missing grid argument!")
@@ -63,9 +63,9 @@ gpuSim <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, krig
 	out <- 0
 	if (dims == 2) {
 		if (prec.double) {
-			out <- .sim2d(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, aggregation.features, aggregation.func, gpu.cache, as.sp, neg.eigenvals.action, benchmark, compute.stats, anis, cpu.invertonly)
+			out <- .sim2d(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, aggregation.features, aggregation.func, gpu.cache, as.sp, neg.eigenvals.action, eigenvals.tol, benchmark, compute.stats, anis, cpu.invertonly)
 		}
-		else out <- .sim2f(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, aggregation.features, aggregation.func, gpu.cache, as.sp, neg.eigenvals.action, benchmark, compute.stats, anis, cpu.invertonly)
+		else out <- .sim2f(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, aggregation.features, aggregation.func, gpu.cache, as.sp, neg.eigenvals.action, eigenvals.tol,benchmark, compute.stats, anis, cpu.invertonly)
 	}
 	else if (dims == 3) {
 		if (cpu.invertonly) warning("cpu.invertonly is only used for testing purposes in two-dimensional simulation, argument will be ignored...")
