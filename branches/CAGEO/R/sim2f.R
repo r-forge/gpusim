@@ -390,7 +390,7 @@
 		
 		if (benchmark) .gpuSimStartTimer()
 		res = .C("unconditionalSimRealizations_2f", out=single(nx*ny*k), as.integer(k), retcode = as.integer(retcode), PACKAGE="gpusim")
-		if (result$retcode != 0) stop(paste("Generation of realizations for conditional simulation returned error: ",.gpuSimCatchError(result$retcode)))
+		if (res$retcode != 0) stop(paste("Generation of realizations for conditional simulation returned error: ",.gpuSimCatchError(result$retcode)))
 		if (benchmark) {
 			t1 = .gpuSimStopTimer()
 			names(t1) = "GPU Generating Unconditional Realizations"

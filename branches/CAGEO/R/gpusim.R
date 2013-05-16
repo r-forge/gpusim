@@ -64,15 +64,65 @@ gpuSim <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, krig
 	if (dims == 2) {
 		if (prec.double) {
 			out <- .sim2d(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, aggregation.features, aggregation.func, gpu.cache, as.sp, neg.eigenvals.action, eigenvals.tol, benchmark, compute.stats, anis, cpu.invertonly)
+			if (neg.eigenvals.action == "output") {
+				xmin = grid@cellcentre.offset[1]
+				ymin = grid@cellcentre.offset[2]
+				dx = grid@cellsize[1]
+				dy = grid@cellsize[2]
+				nx = grid@cells.dim[1]
+				ny = grid@cells.dim[2]
+				xmax = xmin + (nx-1) * dx
+				ymax = ymin + (ny-1) * dy
+				out = list(sim = out)
+				result = .C("simEigenVals_2d", out = double(prod(grid@cells.dim)*4), as.double(xmin), as.double(xmax), as.integer(nx), as.double(ymin),as.double(ymax), as.integer(ny), as.double(sill), as.double(range), as.double(nugget), as.integer(.covID(covmodel)), as.double(anis[1]), as.double(anis[4]),as.double(eigenvals.tol), PACKAGE="gpusim")	
+				dim(result$out) = 2*grid@cells.dim
+				out$eigvals = result$out
+				message("Result of simulation is a list of two elements, the simulation result as well as the computed eigenvalues!")
+			}
 		}
-		else out <- .sim2f(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, aggregation.features, aggregation.func, gpu.cache, as.sp, neg.eigenvals.action, eigenvals.tol,benchmark, compute.stats, anis, cpu.invertonly)
+		else {
+			out <- .sim2f(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, aggregation.features, aggregation.func, gpu.cache, as.sp, neg.eigenvals.action, eigenvals.tol,benchmark, compute.stats, anis, cpu.invertonly)
+			if (neg.eigenvals.action == "output") {
+				xmin = grid@cellcentre.offset[1]
+				ymin = grid@cellcentre.offset[2]
+				dx = grid@cellsize[1]
+				dy = grid@cellsize[2]
+				nx = grid@cells.dim[1]
+				ny = grid@cells.dim[2]
+				xmax = xmin + (nx-1) * dx
+				ymax = ymin + (ny-1) * dy
+				out = list(sim = out)
+				result = .C("simEigenVals_2f", out = single(prod(grid@cells.dim)*4), as.single(xmin), as.single(xmax), as.integer(nx), as.single(ymin),as.single(ymax), as.integer(ny), as.single(sill), as.single(range), as.single(nugget), as.integer(.covID(covmodel)), as.single(anis[1]), as.single(anis[4]),as.single(eigenvals.tol), PACKAGE="gpusim")	
+				dim(result$out) = 2*grid@cells.dim
+				out$eigvals = result$out
+				message("Result of simulation is a list of two elements, the simulation result as well as the computed eigenvalues!")
+			}
+		}
 	}
 	else if (dims == 3) {
 		if (cpu.invertonly) warning("cpu.invertonly is only used for testing purposes in two-dimensional simulation, argument will be ignored...")
 		if (prec.double) {
 			out <- .sim3d(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, aggregation.features, aggregation.func, gpu.cache, as.sp, check=FALSE, benchmark, compute.stats, anis, cpu.invertonly)
+			if (neg.eigenvals.action == "output") {
+				message("Three-dimensional eigenvalue computation currently not implemented, will be ignored!")
+				#out = list(sim = out)
+				#TODO: ADD z grid definition... result = .C("simEigenVals_3d", out = double(prod(grid@cells.dim)*8), as.single(xmin), as.single(xmax), as.integer(nx), as.single(ymin),as.single(ymax), as.integer(ny), as.single(sill), as.single(range), as.single(nugget), as.integer(.covID(covmodel)), as.single(anis[1]), as.single(anis[4]),as.single(eigenvals.tol), PACKAGE="gpusim")	
+				#dim(result$out) = 2*grid@cells.dim
+				#out$eigvals = result$out
+				#message("Result of simulation is a list of two elements, the simulation result as well as the computed eigenvalues!")
+			}
 		}
-		else out <- .sim3f(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, aggregation.features, aggregation.func, gpu.cache, as.sp, check=FALSE, benchmark, compute.stats, anis, cpu.invertonly)
+		else {
+			out <- .sim3f(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, aggregation.features, aggregation.func, gpu.cache, as.sp, check=FALSE, benchmark, compute.stats, anis, cpu.invertonly)
+			if (neg.eigenvals.action == "output") {
+				message("Three-dimensional eigenvalue computation currently not implemented, will be ignored!")
+				#out = list(sim = out)
+				#TODO: ADD z grid definition... result = .C("simEigenVals_3f", out = double(prod(grid@cells.dim)*8), as.single(xmin), as.single(xmax), as.integer(nx), as.single(ymin),as.single(ymax), as.integer(ny), as.single(sill), as.single(range), as.single(nugget), as.integer(.covID(covmodel)), as.single(anis[1]), as.single(anis[4]),as.single(eigenvals.tol), PACKAGE="gpusim")	
+				#dim(result$out) = 2*grid@cells.dim
+				#out$eigvals = result$out
+				#message("Result of simulation is a list of two elements, the simulation result as well as the computed eigenvalues!")
+			}
+		}
 	}
 	else stop("Only two- or three-dimensional simulation supported!")
 	

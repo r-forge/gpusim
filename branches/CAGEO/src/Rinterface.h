@@ -63,8 +63,11 @@ extern "C" {
 
 	void EXPORT gpuCovAnis_2f(float *out, float *xy, int *n, int *model, float *sill, float *range, float *nugget, float *anis_majordir, float *anis_ratio);
 	void EXPORT gpuCov_2f(float *out, float *xy, int *n, int *model, float *sill, float *range, float *nugget);
+	void EXPORT gpuCov_2d(double *out, double *xy, int *n, int *model, double *sill, double *range, double *nugget);
+	void EXPORT gpuCovAnis_2d(double *out, double *xy, int *n, int *model, double *sill, double *range, double *nugget, double *anis_majordir, double *anis_ratio);
 
-
+	void EXPORT simEigenVals_2d(double *out, double *p_xmin, double *p_xmax, int *p_nx, double *p_ymin, double *p_ymax, int *p_ny, double *p_sill, double *p_range, double *p_nugget, int *p_covmodel, double *p_anis_direction, double *p_anis_ratio, double *eigenvals_tol);
+	void EXPORT simEigenVals_2f(float *out, float *p_xmin, float *p_xmax, int *p_nx, float *p_ymin, float *p_ymax, int *p_ny, float *p_sill, float *p_range, float *p_nugget, int *p_covmodel, float *p_anis_direction, float *p_anis_ratio, float *eigenvals_tol);
 
 	void EXPORT unconditionalSimInit_2f(float *p_xmin, float *p_xmax, int *p_nx, float *p_ymin, float *p_ymax, int *p_ny, float *p_sill, float *p_range, float *p_nugget, int *p_covmodel, float *p_anis_direction, float *p_anis_ratio, int *do_check, int *set_cov_to_zero, float *eigenvals_tol,  int *ret_code);
 	void EXPORT unconditionalSimRealizations_2f(float *p_out,  int *p_k, int *ret_code);

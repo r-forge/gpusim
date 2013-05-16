@@ -20,7 +20,7 @@
 
 __device__ double covExpKernel_2d(double ax, double ay, double bx, double by, double sill, double range, double nugget) {
 	double dist = sqrt((ax-bx)*(ax-bx)+(ay-by)*(ay-by));
-	return ((dist == 0.0f)? (nugget + sill) : (sill*expf(-dist/range)));
+	return ((dist == 0.0f)? (nugget + sill) : (sill*exp(-dist/range)));
 }
 
 
@@ -37,7 +37,7 @@ __device__ double covExpAnisKernel_2d(double ax, double ay, double bx, double by
 	dist += temp * temp;
 	dist = sqrt(dist);
 
-	return ((dist == 0.0f)? (nugget + sill) : (sill*expf(-dist/range)));
+	return ((dist == 0.0f)? (nugget + sill) : (sill*exp(-dist/range)));
 }
 
 
@@ -46,7 +46,7 @@ __device__ double covExpAnisKernel_2d(double ax, double ay, double bx, double by
 
 __device__ double covGauKernel_2d(double ax, double ay, double bx, double by, double sill, double range, double nugget) {
 	double dist2 = (ax-bx)*(ax-bx)+(ay-by)*(ay-by);
-	return ((dist2 == 0.0f)? (nugget + sill) : (sill*expf(-dist2/(range*range))));
+	return ((dist2 == 0.0f)? (nugget + sill) : (sill*exp(-dist2/(range*range))));
 }
 
 
@@ -61,9 +61,9 @@ __device__ double covGauAnisKernel_2d(double ax, double ay, double bx, double by
 	dist += temp * temp;
 	temp = afac1 * (dx * (-sin(alpha)) + dy * cos(alpha));
 	dist += temp * temp;
-	//dist = sqrtf(dist);
+	//dist = sqrt(dist);
 
-	return ((dist == 0.0f)? (nugget + sill) : (sill*expf(-dist/(range*range))));
+	return ((dist == 0.0)? (nugget + sill) : (sill*exp(-dist/(range*range))));
 }
 
 
@@ -102,7 +102,7 @@ __device__ double covSphAnisKernel_2d(double ax, double ay, double bx, double by
 
 __device__ double covMat3Kernel_2d(double ax, double ay, double bx, double by, double sill, double range, double nugget) {
 	double dist = sqrt((ax-bx)*(ax-bx)+(ay-by)*(ay-by));
-	return ((dist == 0.0f)? (nugget + sill) : (sill*(1+SQRT3*dist/range)*exp(-SQRT3*dist/range)));
+	return ((dist == 0.0)? (nugget + sill) : (sill*(1+SQRT3*dist/range)*exp(-SQRT3*dist/range)));
 }
 
 
@@ -118,13 +118,13 @@ __device__ double covMat3AnisKernel_2d(double ax, double ay, double bx, double b
 	dist += temp * temp;
 	dist = sqrt(dist);
 
-	return ((dist == 0.0)? (nugget + sill) : (sill*(1+SQRT3*dist/range)*expf(-SQRT3*dist/range)));
+	return ((dist == 0.0)? (nugget + sill) : (sill*(1+SQRT3*dist/range)*exp(-SQRT3*dist/range)));
 }
 
 
 __device__ double covMat5Kernel_2d(double ax, double ay, double bx, double by, double sill, double range, double nugget) {
 	double dist = sqrt((ax-bx)*(ax-bx)+(ay-by)*(ay-by));
-	return ((dist == 0.0f)? (nugget + sill) : (sill * (1 + SQRT5*dist/range + 5*dist*dist/3*range*range) * exp(-SQRT5*dist/range)));
+	return ((dist == 0.0)? (nugget + sill) : (sill * (1 + SQRT5*dist/range + 5*dist*dist/3*range*range) * exp(-SQRT5*dist/range)));
 }
 
 
@@ -140,7 +140,7 @@ __device__ double covMat5AnisKernel_2d(double ax, double ay, double bx, double b
 	dist += temp * temp;
 	dist = sqrt(dist);
 
-	return ((dist == 0.0)? (nugget + sill) : (sill * (1 + SQRT5*dist/range + 5*dist*dist/3*range*range) * expf(-SQRT5*dist/range)));
+	return ((dist == 0.0)? (nugget + sill) : (sill * (1 + SQRT5*dist/range + 5*dist*dist/3*range*range) * exp(-SQRT5*dist/range)));
 }
 
 
@@ -771,6 +771,131 @@ void EXPORT gpuCovAnis_2d(double *out, double *xy, int *n, int *model, double *s
 	cudaFree(d_xy);
 	cudaFree(d_out);
 }
+
+
+
+
+void EXPORT simEigenVals_2d(double *out, double *p_xmin, double *p_xmax, int *p_nx, double *p_ymin, double *p_ymax, int *p_ny, 
+									double *p_sill, double *p_range, double *p_nugget, int *p_covmodel, double *p_anis_direction, 
+									double *p_anis_ratio, double *eigenvals_tol) {
+	cudaError_t cudaStatus;
+	
+	int nx= *p_nx; // Number of cols
+	int ny= *p_ny; // Number of rows
+     
+	//Grid wird einfach verdoppelt, nicht auf naechst 2er-Potenz erweitert
+	int n= 2*nx; // Number of cols
+	int m= 2*ny; // Number of rows
+	//uncond_global_2d.n = ceil2(2*nx); /// 
+	//uncond_global_2d.m = ceil2(2*ny); /// 
+	double dx = (*p_xmax - *p_xmin) / (nx-1);
+	double dy = (*p_ymax - *p_ymin) / (ny-1);
+	
+	// 1d cuda grid
+	dim3 blockSize1d = dim3(1024);
+	dim3 blockCount1d = dim3(n*m / blockSize1d.x);
+	if (n * m % blockSize1d.x  != 0) ++blockCount1d.x;
+	
+	// 2d cuda grid
+	dim3 blockSize2d = dim3(16,16);
+	dim3 blockCount2d = dim3(n / blockSize2d.x, m / blockSize2d.y);
+	if (n % blockSize2d.x != 0) ++blockCount2d.x;
+	if (m % blockSize2d.y != 0) ++blockCount2d.y;
+
+	cufftHandle plan1;
+	//cufftPlan2d(&uncond_global_2d.plan1, uncond_global_2d.n, uncond_global_2d.m, CUFFT_Z2Z); 
+	cufftPlan2d(&plan1, m, n, CUFFT_Z2Z); 
+
+	
+	// build grid (ROW MAJOR)
+	cufftDoubleComplex *h_grid_c = (cufftDoubleComplex*)malloc(sizeof(cufftDoubleComplex)*m*n);
+	for (int i=0; i<n; ++i) { // i =  col index
+		for (int j=0; j<m; ++j) { // j = row index 
+			h_grid_c[j*n+i].x = *p_xmin + i * dx; 
+			//h_grid_c[j*n+i].y = *p_ymin + (j+1) * dy;  
+			h_grid_c[j*n+i].y = *p_ymin + (m-1-j)* dy; 
+			//h_grid_c[j*n+i].y = *p_ymax - j* dy;
+
+		}
+	}
+	
+	
+	double xc = *p_xmin + (dx*n)/2;
+	double yc = *p_ymin +(dy*m)/2;
+	double sill = *p_sill;
+	double range = *p_range;
+	double nugget = *p_nugget;
+	bool isotropic = (*p_anis_ratio == 1.0);
+	double afac1 = 1.0/(*p_anis_ratio);
+	double alpha = (90.0 - *p_anis_direction) * (PI / 180.0);
+	cufftDoubleComplex *d_grid;
+	cufftDoubleComplex *d_cov;
+	
+	// Array for grid
+	cudaStatus = cudaMalloc((void**)&d_grid,sizeof(cufftDoubleComplex)*n*m);
+	// Array for cov grid
+	cudaStatus = cudaMalloc((void**)&d_cov,sizeof(cufftDoubleComplex)*n*m);
+
+	// Sample covariance and generate "trick" grid
+	cufftDoubleComplex *d_trick_grid_c;
+	cudaStatus = cudaMalloc((void**)&d_trick_grid_c,sizeof(cufftDoubleComplex)*n*m);
+	
+	// copy grid to GPU
+	cudaStatus = cudaMemcpy(d_grid,h_grid_c, n*m*sizeof(cufftDoubleComplex),cudaMemcpyHostToDevice);
+	
+	if (isotropic) {
+		sampleCovKernel_2d<<<blockCount2d, blockSize2d>>>(d_trick_grid_c, d_grid, d_cov, xc, yc,*p_covmodel, sill, range,nugget,n,m);
+		//cudaStatus = cudaThreadSynchronize();
+		//if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching sampleCovKernel_2d!\n", cudaStatus);	
+	}
+	else {	
+		sampleCovAnisKernel_2d<<<blockCount2d, blockSize2d>>>(d_trick_grid_c, d_grid, d_cov, xc, yc, *p_covmodel, sill, range,nugget, alpha, afac1, n,m);	
+		//cudaStatus = cudaThreadSynchronize();
+		//if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching sampleCovAnisKernel_2d!\n", cudaStatus);	
+	}
+	free(h_grid_c);
+	cudaFree(d_grid);
+
+
+	// Execute 2d FFT of covariance grid in order to get the spectral representation 
+	cufftExecZ2Z(plan1, d_cov, d_cov, CUFFT_FORWARD); // in place fft forward
+
+
+	cufftExecZ2Z(plan1, d_trick_grid_c, d_trick_grid_c, CUFFT_FORWARD); // in place fft forward
+
+	
+	// Multiply fft of "trick" grid with n*m
+	multKernel_2d<<<blockCount1d, blockSize1d>>>(d_trick_grid_c, n, m);
+	cudaStatus = cudaThreadSynchronize();
+	if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching multKernel_2d!\n", cudaStatus);	
+
+
+	// Devide spectral covariance grid by "trick" grid
+	divideSpectrumKernel_2d<<<blockCount1d, blockSize1d>>>(d_cov, d_trick_grid_c, *eigenvals_tol);	
+	cudaStatus = cudaThreadSynchronize();
+	if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching divideSpectrumKernel_f!\n", cudaStatus);	
+	cudaFree(d_trick_grid_c);
+
+
+	cufftDoubleComplex *h_cov = (cufftDoubleComplex*)malloc(sizeof(cufftDoubleComplex)*n*m);
+	cudaStatus = cudaMemcpy(h_cov,d_cov,sizeof(cufftDoubleComplex)*n*m,cudaMemcpyDeviceToHost);
+
+	// complex to real
+	for (int i=0; i<n*m; ++i) {
+		out[i] = h_cov[i].x;
+	}
+
+	free(h_cov);
+	cudaFree(d_cov);
+	cufftDestroy(plan1);
+}
+
+
+
+
+
+
+
 
 
 
