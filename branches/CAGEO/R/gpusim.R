@@ -222,6 +222,36 @@ covMatern5 <- function(data, sill, range, nugget) {
 
 
 
+gpuCov2 <- function(data, model, sill, range, nugget, anis=c(0,0,0,1,1), prec.double=FALSE) {
+	if (class(data) != "matrix") {
+		stop("Expected a matrix as input!")
+	}
+	n = nrow(data)
+	if (ncol(data) != 2) {
+		stop("Expected a matrix with exactly 2 columns!")
+	}
+	res = 0
+	if (anis[4] == 1) {
+		if (prec.double) {
+			res = .C("gpuCov_2d", out=double(n*n), as.double(data), as.integer(n), as.integer(.covID(model)), as.double(sill), as.double(range), as.double(nugget), PACKAGE="gpusim")
+		}
+		else {
+			res = .C("gpuCov_2f", out=single(n*n), as.single(data), as.integer(n), as.integer(.covID(model)), as.single(sill), as.single(range), as.single(nugget), PACKAGE="gpusim")
+		}
+	}
+	else { #anisotropic
+		if (prec.double) {
+			res = .C("gpuCovAnis_2d", out=double(n*n), as.double(data), as.integer(n), as.integer(.covID(model)),as.double(sill), as.double(range), as.double(nugget), as.double(anis[1]), as.double(anis[4]), PACKAGE="gpusim")
+		}
+		else {
+			res = .C("gpuCovAnis_2f", out=single(n*n), as.single(data), as.integer(n), as.integer(.covID(model)),as.single(sill), as.single(range), as.single(nugget), as.single(anis[1]), as.single(anis[4]), PACKAGE="gpusim")		
+		}
+	}	
+	dim(res$out) = c(n,n)
+	return(res$out)
+}
+
+
 dCov2d <- function(data, model, sill, range, nugget, anis=c(0,0,0,1,1)) {
 	if (class(data) != "matrix") {
 		stop("Expected a matrix as input!")
@@ -240,6 +270,9 @@ dCov2d <- function(data, model, sill, range, nugget, anis=c(0,0,0,1,1)) {
 	dim(res$out) = c(n,n)
 	return(res$out)
 }
+
+
+
 
 
 dCov3d <- function(data, model, sill, range, nugget, anis=c(0,0,0,1,1)) {

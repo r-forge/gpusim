@@ -647,6 +647,151 @@ __global__ void residualsSimple_2f(float* res, float *srcdata, float *uncond_gri
 
 
 
+
+// Covariance sampling of a regular grid
+__global__ void dCovKernel_2f(float *out, float *xy, int n, int model, float sill, float range, float nugget) {
+	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	int j = threadIdx.y + blockIdx.y * blockDim.y;
+	if (i < n && j < n) {
+		switch (model) {
+		case EXP:
+			out[j*n+i] = covExpKernel_2f(xy[j],xy[j+n],xy[i],xy[i+n],sill,range,nugget);
+			break;
+		case GAU:
+			out[j*n+i] = covGauKernel_2f(xy[j],xy[j+n],xy[i],xy[i+n],sill,range,nugget);
+			break;
+		case SPH:
+			out[j*n+i] = covSphKernel_2f(xy[j],xy[j+n],xy[i],xy[i+n],sill,range,nugget);
+			break;
+		case MAT3:
+			out[j*n+i] = covMat3Kernel_2f(xy[j],xy[j+n],xy[i],xy[i+n],sill,range,nugget);
+			break;
+		case MAT5:
+			out[j*n+i] = covMat5Kernel_2f(xy[j],xy[j+n],xy[i],xy[i+n],sill,range,nugget);
+			break;
+		}	
+		
+	}
+}
+
+
+
+
+
+
+// Distance and covariance matrix calculation, input coordinates are NOT interleaved, this fits better to an R data.frame
+__global__ void dCovAnisKernel_2f(float *out, float *xy, int n, int model, float sill, float range, float nugget, float anis_majordir, float anis_ratio) {	
+	float alpha = (90.0 - anis_majordir) * (PI / 180.0);
+	float afac1 = 1.0/(anis_ratio);
+	
+	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	int j = threadIdx.y + blockIdx.y * blockDim.y;
+	if (i < n && j < n) {
+		switch (model) {
+		case EXP:
+			out[j*n+i] = covExpAnisKernel_2f(xy[j],xy[j+n],xy[i],xy[i+n],sill,range,nugget,alpha,afac1);
+			break;
+		case GAU:
+			out[j*n+i] = covGauAnisKernel_2f(xy[j],xy[j+n],xy[i],xy[i+n],sill,range,nugget,alpha,afac1);
+			break;
+		case SPH:
+			out[j*n+i] = covSphAnisKernel_2f(xy[j],xy[j+n],xy[i],xy[i+n],sill,range,nugget,alpha,afac1);
+			break;
+		case MAT3:
+			out[j*n+i] = covMat3AnisKernel_2f(xy[j],xy[j+n],xy[i],xy[i+n],sill,range,nugget,alpha,afac1);
+			break;
+		case MAT5:
+			out[j*n+i] = covMat5AnisKernel_2f(xy[j],xy[j+n],xy[i],xy[i+n],sill,range,nugget,alpha,afac1);
+			break;
+		}	
+	}	
+}
+
+
+
+
+
+
+
+
+/*******************************************************************************************
+** GPU COV FUNCTIONS FOR R   ***************************************************************
+********************************************************************************************/
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+
+
+// Distance and covariance matrix calculation, input coordinates are NOT interleaved, this fits better to an R data.frame
+void EXPORT gpuCov_2f(float *out, float *xy, int *n, int *model, float *sill, float *range, float *nugget) {	
+	dim3 blockSize2d  = dim3(16,16);
+	dim3 blockCount2d = dim3(*n/blockSize2d.x,*n/blockSize2d.y);
+	if (*n % blockSize2d.x != 0) ++blockCount2d.x;
+	if (*n % blockSize2d.y != 0) ++blockCount2d.y;
+	
+	
+	float* d_xy;
+	float* d_out;
+	cudaMalloc((void**)&d_xy,sizeof(float)*(*n)*2);
+	cudaMalloc((void**)&d_out,sizeof(float)*(*n)*(*n));
+
+	cudaMemcpy(d_xy,xy,sizeof(float)*(*n)*2,cudaMemcpyHostToDevice);
+	
+	dCovKernel_2f<<<blockCount2d,blockSize2d>>>(d_out,d_xy,*n,*model,*sill,*range, *nugget);
+	cudaThreadSynchronize();	
+	
+	cudaMemcpy(out,d_out,sizeof(float)*(*n)*(*n),cudaMemcpyDeviceToHost);
+	
+	cudaFree(d_xy);
+	cudaFree(d_out);
+}
+
+
+
+
+// Distance and covariance matrix calculation, input coordinates are NOT interleaved, this fits better to an R data.frame
+void EXPORT gpuCovAnis_2f(float *out, float *xy, int *n, int *model, float *sill, float *range, float *nugget, float *anis_majordir, float *anis_ratio) {	
+	dim3 blockSize2d  = dim3(16,16);
+	dim3 blockCount2d = dim3(*n/blockSize2d.x,*n/blockSize2d.y);
+	if (*n % blockSize2d.x != 0) ++blockCount2d.x;
+	if (*n % blockSize2d.y != 0) ++blockCount2d.y;
+	
+	
+	float* d_xy;
+	float* d_out;
+	cudaMalloc((void**)&d_xy,sizeof(float)*(*n)*2);
+	cudaMalloc((void**)&d_out,sizeof(float)*(*n)*(*n));
+
+	cudaMemcpy(d_xy,xy,sizeof(float)*(*n)*2,cudaMemcpyHostToDevice);
+	
+	dCovAnisKernel_2f<<<blockCount2d,blockSize2d>>>(d_out,d_xy,*n,*model,*sill,*range, *nugget, *anis_majordir, *anis_ratio);
+	cudaThreadSynchronize();	
+	
+	cudaMemcpy(out,d_out,sizeof(float)*(*n)*(*n),cudaMemcpyDeviceToHost);
+	
+	cudaFree(d_xy);
+	cudaFree(d_out);
+}
+
+
+
+#ifdef __cplusplus
+}
+#endif
+
+
+
+
+
+
+
+
+
+
+
+
+
 /*******************************************************************************************
 ** UNCONDITIONAL SIMULATION  ***************************************************************
 ********************************************************************************************/

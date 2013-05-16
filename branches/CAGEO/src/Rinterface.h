@@ -61,6 +61,11 @@ extern "C" {
 
 
 
+	void EXPORT gpuCovAnis_2f(float *out, float *xy, int *n, int *model, float *sill, float *range, float *nugget, float *anis_majordir, float *anis_ratio);
+	void EXPORT gpuCov_2f(float *out, float *xy, int *n, int *model, float *sill, float *range, float *nugget);
+
+
+
 	void EXPORT unconditionalSimInit_2f(float *p_xmin, float *p_xmax, int *p_nx, float *p_ymin, float *p_ymax, int *p_ny, float *p_sill, float *p_range, float *p_nugget, int *p_covmodel, float *p_anis_direction, float *p_anis_ratio, int *do_check, int *set_cov_to_zero, float *eigenvals_tol,  int *ret_code);
 	void EXPORT unconditionalSimRealizations_2f(float *p_out,  int *p_k, int *ret_code);
 	void EXPORT unconditionalSimRelease_2f(int *ret_code);
