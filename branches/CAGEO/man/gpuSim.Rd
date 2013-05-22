@@ -7,7 +7,7 @@ Performs (un)conditional simulation of gaussian random fields using NVIDIAs CUDA
 }
 
 \usage{
-gpuSim(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method='O', mu=0, aggregation.features=NULL, aggregation.func=mean, gpu.cache=TRUE, as.sp=FALSE, neg.eigenvals.action="ignore",eigenvals.tol=-1e-07, benchmark=FALSE, prec.double=FALSE, compute.stats=FALSE, anis=c(0,0,0,1,1))
+gpuSim(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method='O', mu=0, aggregation.features=NULL, aggregation.func=mean, gpu.cache=TRUE, as.sp=FALSE, neg.eigenvals.action="ignore",eigenvals.tol=-1e-07, benchmark=FALSE, prec.double=FALSE, compute.stats=FALSE, anis=c(0,0,0,1,1), sim.n, sim.m)
 }
 
 \arguments{
@@ -38,8 +38,9 @@ gpuSim(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method='
 	\item{prec.double}{If TRUE, double precision is used. Notice that the performance for double precision strongly depends on the available hardware.}
 	\item{compute.stats}{If TRUE, two additional realizations will be added to the output containing the pixelwise mean and standard deviations over all realizations.}
 	\item{anis}{Anisotropy argument, see ?vgm from gstat package for further information}
-}
-
+	\item{sim.n}{Internal extended size of first dimension, default 2 * num of grid cells in this dimension}
+	\item{sim.m}{Internal extended size of second dimension, default 2 * num of grid cells in this dimension}
+	}
 \details{
 This is a wrapper function for different types of simulation routines such as unconditional and conditional simulation. With regard to the given arguments, three different cumputations can be performed:
 \enumerate{

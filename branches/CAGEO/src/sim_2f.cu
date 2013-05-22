@@ -778,15 +778,15 @@ void EXPORT gpuCovAnis_2f(float *out, float *xy, int *n, int *model, float *sill
 
 void EXPORT simEigenVals_2f(float *out, float *p_xmin, float *p_xmax, int *p_nx, float *p_ymin, float *p_ymax, int *p_ny, 
 									float *p_sill, float *p_range, float *p_nugget, int *p_covmodel, float *p_anis_direction, 
-									float *p_anis_ratio, float *eigenvals_tol) {
+									float *p_anis_ratio, float *eigenvals_tol, int *p_n, int *p_m) {
 	cudaError_t cudaStatus;
 	
 	int nx= *p_nx; // Number of cols
 	int ny= *p_ny; // Number of rows
      
 	//Grid wird einfach verdoppelt, nicht auf naechst 2er-Potenz erweitert
-	int n= 2*nx; // Number of cols
-	int m= 2*ny; // Number of rows
+	int n= *p_n; // Number of cols
+	int m= *p_m; // Number of rows
 	//uncond_global_2f.n = ceil2(2*nx); /// 
 	//uncond_global_2f.m = ceil2(2*ny); /// 
 	float dx = (*p_xmax - *p_xmin) / (nx-1);
@@ -937,14 +937,18 @@ extern "C" {
 
 void EXPORT unconditionalSimInit_2f(float *p_xmin, float *p_xmax, int *p_nx, float *p_ymin, float *p_ymax, int *p_ny, 
 									float *p_sill, float *p_range, float *p_nugget, int *p_covmodel, float *p_anis_direction, 
-									float *p_anis_ratio, int *do_check, int *set_cov_to_zero, float *eigenvals_tol, int *ret_code) {
+									float *p_anis_ratio, int *do_check, int *set_cov_to_zero, float *eigenvals_tol, int *p_n, int *p_m, int *ret_code) {
 	*ret_code = OK;
 	cudaError_t cudaStatus;
 	
 	uncond_global_2f.nx= *p_nx; // Number of cols
 	uncond_global_2f.ny= *p_ny; // Number of rows
-	uncond_global_2f.n= 2*uncond_global_2f.nx; // Number of cols
-	uncond_global_2f.m= 2*uncond_global_2f.ny; // Number of rows
+	//uncond_global_2f.n= 2*uncond_global_2f.nx; // Number of cols
+	//uncond_global_2f.m= 2*uncond_global_2f.ny; // Number of rows
+	uncond_global_2f.n= *p_n; // Number of cols
+	uncond_global_2f.m= *p_m;
+
+
 	//uncond_global_2f.n = ceil2(2*uncond_global_2f.nx); /// 
 	//uncond_global_2f.m = ceil2(2*uncond_global_2f.ny); /// 
 	uncond_global_2f.dx = (*p_xmax - *p_xmin) / (uncond_global_2f.nx-1);
@@ -1272,14 +1276,16 @@ extern "C" {
 
 void EXPORT conditionalSimInit_2f(float *p_xmin, float *p_xmax, int *p_nx, float *p_ymin, float *p_ymax, int *p_ny, float *p_sill, 
 								  float *p_range, float *p_nugget, float *p_srcXY, float *p_srcData, int *p_numSrc, int *p_covmodel, 
-								  float *p_anis_direction, float *p_anis_ratio, int *do_check, int *set_cov_to_zero, float *eigenvals_tol, int *krige_method, float *mu, int *uncond_gpucache, int *cpuinvertonly, int *ret_code) {
+								  float *p_anis_direction, float *p_anis_ratio, int *do_check, int *set_cov_to_zero, float *eigenvals_tol, int *krige_method, float *mu, int *uncond_gpucache, int *cpuinvertonly, int *p_n, int *p_m, int *ret_code) {
 	*ret_code = OK;
 	cudaError_t cudaStatus;
 
 	cond_global_2f.nx= *p_nx; // Number of cols
 	cond_global_2f.ny= *p_ny; // Number of rows
-	cond_global_2f.n= 2*cond_global_2f.nx; // Number of cols
-	cond_global_2f.m= 2*cond_global_2f.ny; // Number of rows
+	//cond_global_2f.n= 2*cond_global_2f.nx; // Number of cols
+	//cond_global_2f.m= 2*cond_global_2f.ny; // Number of rows
+	cond_global_2f.n= *p_n; // Number of cols
+	cond_global_2f.m= *p_m; // Number of rows
 	cond_global_2f.dx = (*p_xmax - *p_xmin) / (cond_global_2f.nx - 1);
 	cond_global_2f.dy = (*p_ymax - *p_ymin) / (cond_global_2f.ny - 1);
 	cond_global_2f.numSrc = *p_numSrc;

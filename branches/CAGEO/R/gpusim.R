@@ -16,7 +16,7 @@
  }
 
 
-gpuSim <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method='O', mu=0, aggregation.features=NULL, aggregation.func=mean, gpu.cache=TRUE, as.sp=FALSE, neg.eigenvals.action = "ignore", eigenvals.tol=-1e-07,  benchmark=FALSE, prec.double=FALSE, compute.stats=FALSE, anis=c(0,0,0,1,1), cpu.invertonly=FALSE) {
+gpuSim <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method='O', mu=0, aggregation.features=NULL, aggregation.func=mean, gpu.cache=TRUE, as.sp=FALSE, neg.eigenvals.action = "ignore", eigenvals.tol=-1e-07,  benchmark=FALSE, prec.double=FALSE, compute.stats=FALSE, anis=c(0,0,0,1,1), cpu.invertonly=FALSE, sim.n, sim.m) {
 	
 	if (missing(grid)) {
 		stop("Error: Missing grid argument!")
@@ -43,7 +43,8 @@ gpuSim <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, krig
 		stop("Expected 5 or 2 anisotropy values!")
 	}
 
-	
+	if (missing(sim.n)) sim.n=2*grid@cells.dim[1]
+	if (missing(sim.m)) sim.m=2*grid@cells.dim[2]
 	
 	# aggregation input args check
 	if (!is.null(aggregation.features) && !is.null(aggregation.func)) {
@@ -63,7 +64,7 @@ gpuSim <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, krig
 	out <- 0
 	if (dims == 2) {
 		if (prec.double) {
-			out <- .sim2d(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, aggregation.features, aggregation.func, gpu.cache, as.sp, neg.eigenvals.action, eigenvals.tol, benchmark, compute.stats, anis, cpu.invertonly)
+			out <- .sim2d(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, aggregation.features, aggregation.func, gpu.cache, as.sp, neg.eigenvals.action, eigenvals.tol, benchmark, compute.stats, anis, cpu.invertonly, sim.n, sim.m)
 			if (neg.eigenvals.action == "output") {
 				xmin = grid@cellcentre.offset[1]
 				ymin = grid@cellcentre.offset[2]
@@ -74,14 +75,14 @@ gpuSim <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, krig
 				xmax = xmin + (nx-1) * dx
 				ymax = ymin + (ny-1) * dy
 				out = list(sim = out)
-				result = .C("simEigenVals_2d", out = double(prod(grid@cells.dim)*4), as.double(xmin), as.double(xmax), as.integer(nx), as.double(ymin),as.double(ymax), as.integer(ny), as.double(sill), as.double(range), as.double(nugget), as.integer(.covID(covmodel)), as.double(anis[1]), as.double(anis[4]),as.double(eigenvals.tol), PACKAGE="gpusim")	
-				dim(result$out) = 2*grid@cells.dim
+				result = .C("simEigenVals_2d", out = double(sim.n*sim.m), as.double(xmin), as.double(xmax), as.integer(nx), as.double(ymin),as.double(ymax), as.integer(ny), as.double(sill), as.double(range), as.double(nugget), as.integer(.covID(covmodel)), as.double(anis[1]), as.double(anis[4]),as.double(eigenvals.tol), as.integer(sim.n), as.integer(sim.m), PACKAGE="gpusim")	
+				dim(result$out) = c(sim.n,sim.m)
 				out$eigvals = result$out
 				message("Result of simulation is a list of two elements, the simulation result as well as the computed eigenvalues!")
 			}
 		}
 		else {
-			out <- .sim2f(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, aggregation.features, aggregation.func, gpu.cache, as.sp, neg.eigenvals.action, eigenvals.tol,benchmark, compute.stats, anis, cpu.invertonly)
+			out <- .sim2f(grid, covmodel, sill, range, nugget, k, samples, uncond, kriging.method, mu, aggregation.features, aggregation.func, gpu.cache, as.sp, neg.eigenvals.action, eigenvals.tol,benchmark, compute.stats, anis, cpu.invertonly, sim.n, sim.m)
 			if (neg.eigenvals.action == "output") {
 				xmin = grid@cellcentre.offset[1]
 				ymin = grid@cellcentre.offset[2]
@@ -92,8 +93,8 @@ gpuSim <- function(grid, covmodel, sill, range, nugget, k, samples, uncond, krig
 				xmax = xmin + (nx-1) * dx
 				ymax = ymin + (ny-1) * dy
 				out = list(sim = out)
-				result = .C("simEigenVals_2f", out = single(prod(grid@cells.dim)*4), as.single(xmin), as.single(xmax), as.integer(nx), as.single(ymin),as.single(ymax), as.integer(ny), as.single(sill), as.single(range), as.single(nugget), as.integer(.covID(covmodel)), as.single(anis[1]), as.single(anis[4]),as.single(eigenvals.tol), PACKAGE="gpusim")	
-				dim(result$out) = 2*grid@cells.dim
+				result = .C("simEigenVals_2f", out = single(sim.n*sim.m), as.single(xmin), as.single(xmax), as.integer(nx), as.single(ymin),as.single(ymax), as.integer(ny), as.single(sill), as.single(range), as.single(nugget), as.integer(.covID(covmodel)), as.single(anis[1]), as.single(anis[4]),as.single(eigenvals.tol), as.integer(sim.n), as.integer(sim.m), PACKAGE="gpusim")	
+				dim(result$out) = c(sim.n,sim.m)
 				out$eigvals = result$out
 				message("Result of simulation is a list of two elements, the simulation result as well as the computed eigenvalues!")
 			}
