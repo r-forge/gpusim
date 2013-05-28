@@ -1875,7 +1875,7 @@ extern "C" {
 		conditioning_global_2d.k = *p_k;
 		conditioning_global_2d.covmodel = *p_covmodel;
 		conditioning_global_2d.krige_method = *krige_method;
-		if (cond_global_2d.krige_method == SIMPLE)
+		if (conditioning_global_2d.krige_method == SIMPLE)
 			conditioning_global_2d.mu = *mu;
 		else conditioning_global_2d.mu = 0;
 
@@ -1950,7 +1950,7 @@ extern "C" {
 			if (conditioning_global_2d.krige_method == ORDINARY) {
 				residualsOrdinary_2d<<<conditioning_global_2d.blockCountSamples,conditioning_global_2d.blockSizeSamples>>>(d_residuals,conditioning_global_2d.d_sampledata,conditioning_global_2d.d_uncond+l*(conditioning_global_2d.nx*conditioning_global_2d.ny),conditioning_global_2d.d_sampleindices,conditioning_global_2d.nx,conditioning_global_2d.ny,conditioning_global_2d.numSrc);
 			}
-			else if (cond_global_2d.krige_method == SIMPLE) {
+			else if (conditioning_global_2d.krige_method == SIMPLE) {
 				residualsSimple_2d<<<conditioning_global_2d.blockCountSamples,conditioning_global_2d.blockSizeSamples>>>(d_residuals,conditioning_global_2d.d_sampledata,conditioning_global_2d.d_uncond+l*(conditioning_global_2d.nx*conditioning_global_2d.ny),conditioning_global_2d.d_sampleindices,conditioning_global_2d.nx,conditioning_global_2d.ny,conditioning_global_2d.numSrc,conditioning_global_2d.mu);
 			}
 			cudaStatus = cudaThreadSynchronize();	
@@ -1987,7 +1987,7 @@ extern "C" {
 		dim3 blockCntCond = dim3(conditioning_global_2d.nx*conditioning_global_2d.ny/ blockSizeCond.x);
 		if (conditioning_global_2d.nx*conditioning_global_2d.ny % blockSizeCond.x != 0) ++blockCntCond.x;
 
-		for(int l = 0; l<cond_global_2d.k; ++l) {
+		for(int l = 0; l<conditioning_global_2d.k; ++l) {
 			cudaMemcpy(d_y, p_y + l*(conditioning_global_2d.numSrc + 1), sizeof(double) * (conditioning_global_2d.numSrc + 1),cudaMemcpyHostToDevice);		
 					
 			if (conditioning_global_2d.isotropic) {
@@ -2032,7 +2032,7 @@ extern "C" {
 		dim3 blockCntCond = dim3(conditioning_global_2d.nx*conditioning_global_2d.ny/ blockSizeCond.x);
 		if (conditioning_global_2d.nx*conditioning_global_2d.ny % blockSizeCond.x != 0) ++blockCntCond.x;
 
-		for(int l = 0; l<cond_global_2d.k; ++l) {
+		for(int l = 0; l<conditioning_global_2d.k; ++l) {
 			cudaMemcpy(d_y, p_y + l*conditioning_global_2d.numSrc, sizeof(double) * conditioning_global_2d.numSrc,cudaMemcpyHostToDevice);		
 					
 			if (conditioning_global_2d.isotropic) {

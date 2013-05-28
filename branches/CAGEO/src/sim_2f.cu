@@ -1849,7 +1849,7 @@ extern "C" {
 		conditioning_global_2f.alpha = (90.0 - *p_anis_direction) * (PI / 180.0);
 
 		// 1d cuda grid
-		conditioning_global_2f.blockSize1d = dim3(256);
+		conditioning_global_2f.blockSize1d = dim3(1024);
 		conditioning_global_2f.blockCount1d = dim3(conditioning_global_2f.n*conditioning_global_2f.m / conditioning_global_2f.blockSize1d.x);
 		if (conditioning_global_2f.n * conditioning_global_2f.m % conditioning_global_2f.blockSize1d.x  != 0) ++conditioning_global_2f.blockCount1d.x;
 	
@@ -1910,7 +1910,7 @@ extern "C" {
 
 		for(int l = 0; l<conditioning_global_2f.k; ++l) {
 			
-			// d_uncond is now a unconditional realization 
+			
 			// Compute residuals between samples and d_uncond
 			if (conditioning_global_2f.krige_method == ORDINARY) {
 				residualsOrdinary_2f<<<conditioning_global_2f.blockCountSamples,conditioning_global_2f.blockSizeSamples>>>(d_residuals,conditioning_global_2f.d_sampledata,conditioning_global_2f.d_uncond+l*(conditioning_global_2f.nx*conditioning_global_2f.ny),conditioning_global_2f.d_sampleindices,conditioning_global_2f.nx,conditioning_global_2f.ny,conditioning_global_2f.numSrc);
@@ -1952,7 +1952,7 @@ extern "C" {
 		dim3 blockCntCond = dim3(conditioning_global_2f.nx*conditioning_global_2f.ny/ blockSizeCond.x);
 		if (conditioning_global_2f.nx*conditioning_global_2f.ny % blockSizeCond.x != 0) ++blockCntCond.x;
 
-		for(int l = 0; l<cond_global_2f.k; ++l) {
+		for(int l = 0; l<conditioning_global_2f.k; ++l) {
 			cudaMemcpy(d_y, p_y + l*(conditioning_global_2f.numSrc + 1), sizeof(float) * (conditioning_global_2f.numSrc + 1),cudaMemcpyHostToDevice);		
 					
 			if (conditioning_global_2f.isotropic) {
@@ -1997,7 +1997,7 @@ extern "C" {
 		dim3 blockCntCond = dim3(conditioning_global_2f.nx*conditioning_global_2f.ny/ blockSizeCond.x);
 		if (conditioning_global_2f.nx*conditioning_global_2f.ny % blockSizeCond.x != 0) ++blockCntCond.x;
 
-		for(int l = 0; l<cond_global_2f.k; ++l) {
+		for(int l = 0; l<conditioning_global_2f.k; ++l) {
 			cudaMemcpy(d_y, p_y + l*conditioning_global_2f.numSrc, sizeof(float) * conditioning_global_2f.numSrc,cudaMemcpyHostToDevice);		
 				
 			if (conditioning_global_2f.isotropic) {

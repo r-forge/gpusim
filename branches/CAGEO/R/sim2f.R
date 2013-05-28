@@ -73,7 +73,7 @@
 		retcode = 0
 		if (benchmark) .gpuSimStartTimer()
 		
-		result = .C("conditioningInit_2f", as.single(xmin), as.single(xmax), as.integer(nx), as.single(ymin),as.single(ymax), as.integer(ny), as.single(sill), as.single(range), as.single(nugget), as.single(t(coordinates(samples))), as.single(srcData), as.integer(numSrc),  as.integer(k), as.single(uncond), as.integer(.covID(covmodel)), as.single(anis[1]), as.single(anis[4]), as.integer(.gpuSimKrigeMethod(kriging.method)), as.single(mu), as.integer(cpu.invertonly), retcode = as.integer(retcode),PACKAGE="gpusim")
+		result = .C("conditioningInit_2f", as.single(xmin), as.single(xmax), as.integer(nx), as.single(ymin),as.single(ymax), as.integer(ny), as.single(sill), as.single(range), as.single(nugget), as.single(t(coordinates(samples))), as.single(srcData), as.integer(numSrc),  as.integer(k), as.single(uncond), as.integer(.covID(covmodel)), as.single(anis[1]), as.single(anis[4]), as.integer(.gpuSimKrigeMethod(kriging.method)), as.single(mu), retcode = as.integer(retcode),PACKAGE="gpusim")
 		if (result$retcode != 0) stop(paste("Initialization of conditioning returned error:",.gpuSimCatchError(result$retcode)))
 		
 		if (benchmark) {
@@ -99,6 +99,7 @@
 			
 			# solve residual equation system
 			dim(res$out) = c(numSrc+1,k)
+			
 			y <- 0
 			if (cpu.invertonly) {
 				y = solve(cov.l)
@@ -112,10 +113,10 @@
 				names(t1) = "CPU Solving Residual Equation System"
 				times = c(times,t1)
 			}
-			
 			# interpolate residuals and add to the unconditional realizations
 			if (benchmark) .gpuSimStartTimer()			
 			res = .C("conditioningKrigeResiduals_2f", out=single(nx*ny*k), as.single(y), retcode = as.integer(retcode), PACKAGE="gpusim")
+			
 			if (res$retcode != 0) stop(paste("Generation of realizations for conditional simulation returned error: ",.gpuSimCatchError(res$retcode)))
 			
 			if (benchmark) {
@@ -138,6 +139,7 @@
 			# solve residual equation system
 			if (benchmark) .gpuSimStartTimer()	
 			dim(res$out) = c(numSrc,k)
+			
 			y <- 0
 			if (cpu.invertonly) {
 			  # y = solve(cov.l)
@@ -153,7 +155,6 @@
 				names(t1) = "CPU Solving Residual Equation System"
 				times = c(times,t1)
 			}
-			
 			# interpolate residuals and add to the unconditional realizations	
 			if (benchmark) .gpuSimStartTimer()	
 			res = .C("conditioningSimpleKrigeResiduals_2f", out=single(nx*ny*k), as.single(y), retcode = as.integer(retcode), PACKAGE="gpusim")

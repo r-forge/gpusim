@@ -76,7 +76,7 @@
 		
 		
 		
-		result = .C("conditioningInit_2d", as.double(xmin), as.double(xmax), as.integer(nx), as.double(ymin),as.double(ymax), as.integer(ny), as.double(sill), as.double(range), as.double(nugget), as.double(t(coordinates(samples))), as.double(srcData), as.integer(numSrc),  as.integer(k), as.double(uncond), as.integer(.covID(covmodel)), as.double(anis[1]), as.double(anis[4]), as.integer(.gpuSimKrigeMethod(kriging.method)), as.double(mu), as.integer(cpu.invertonly), retcode = as.integer(retcode),PACKAGE="gpusim")
+		result = .C("conditioningInit_2d", as.double(xmin), as.double(xmax), as.integer(nx), as.double(ymin),as.double(ymax), as.integer(ny), as.double(sill), as.double(range), as.double(nugget), as.double(t(coordinates(samples))), as.double(srcData), as.integer(numSrc),  as.integer(k), as.double(uncond), as.integer(.covID(covmodel)), as.double(anis[1]), as.double(anis[4]), as.integer(.gpuSimKrigeMethod(kriging.method)), as.double(mu), retcode = as.integer(retcode),PACKAGE="gpusim")
 		if (result$retcode != 0) stop(paste("Initialization of conditioning returned error:",.gpuSimCatchError(result$retcode)))
 		
 		if (benchmark) {
