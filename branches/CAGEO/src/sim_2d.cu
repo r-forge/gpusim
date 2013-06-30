@@ -162,6 +162,13 @@ __global__ void ReDiv_2d(double *out, cufftDoubleComplex *c, double div,int nx, 
 	if (col < nx && row < ny) out[row*nx+col] = c[row*M+col].x / div; 
 }
 
+__global__ void ReDivNoise_2d(double *out, cufftDoubleComplex *c, double div,int nx, int ny, int M, double *noise) {
+	int col = threadIdx.x + blockIdx.x * blockDim.x;
+	int row = threadIdx.y + blockIdx.y * blockDim.y;
+	//if (col < nx && row < ny) out[col*ny+row] = c[col*2*ny+row].x / div; 
+	if (col < nx && row < ny) out[row*nx+col] = (c[row*M+col].x / div) + noise[row*M+col]; 
+}
+
 
 
 
@@ -934,6 +941,7 @@ struct uncond_state_2d {
 	dim3 blockCount2d;
 	dim3 blockSize1d;
 	dim3 blockCount1d;
+	double nugget;
 } uncond_global_2d;
 
 
@@ -994,7 +1002,7 @@ void EXPORT unconditionalSimInit_2d(double *p_xmin, double *p_xmax, int *p_nx, d
 	double yc = *p_ymin +(uncond_global_2d.dy*uncond_global_2d.m)/2;
 	double sill = *p_sill;
 	double range = *p_range;
-	double nugget = *p_nugget;
+	uncond_global_2d.nugget = *p_nugget;
 	bool isotropic = (*p_anis_ratio == 1.0);
 	double afac1 = 1.0/(*p_anis_ratio);
 	double alpha = (90.0 - *p_anis_direction) * (PI / 180.0);
@@ -1013,12 +1021,12 @@ void EXPORT unconditionalSimInit_2d(double *p_xmin, double *p_xmax, int *p_nx, d
 	cudaStatus = cudaMemcpy(d_grid,h_grid_c, uncond_global_2d.n*uncond_global_2d.m*sizeof(cufftDoubleComplex),cudaMemcpyHostToDevice);
 	
 	if (isotropic) {
-		sampleCovKernel_2d<<<uncond_global_2d.blockCount2d, uncond_global_2d.blockSize2d>>>(d_trick_grid_c, d_grid, uncond_global_2d.d_cov, xc, yc,*p_covmodel, sill, range,nugget,uncond_global_2d.n,uncond_global_2d.m);
+		sampleCovKernel_2d<<<uncond_global_2d.blockCount2d, uncond_global_2d.blockSize2d>>>(d_trick_grid_c, d_grid, uncond_global_2d.d_cov, xc, yc,*p_covmodel, sill, range,0.0,uncond_global_2d.n,uncond_global_2d.m);
 		//cudaStatus = cudaThreadSynchronize();
 		//if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching sampleCovKernel_2d!\n", cudaStatus);	
 	}
 	else {	
-		sampleCovAnisKernel_2d<<<uncond_global_2d.blockCount2d, uncond_global_2d.blockSize2d>>>(d_trick_grid_c, d_grid, uncond_global_2d.d_cov, xc, yc, *p_covmodel, sill, range,nugget, alpha, afac1, uncond_global_2d.n,uncond_global_2d.m);	
+		sampleCovAnisKernel_2d<<<uncond_global_2d.blockCount2d, uncond_global_2d.blockSize2d>>>(d_trick_grid_c, d_grid, uncond_global_2d.d_cov, xc, yc, *p_covmodel, sill, range,0.0, alpha, afac1, uncond_global_2d.n,uncond_global_2d.m);	
 		//cudaStatus = cudaThreadSynchronize();
 		//if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching sampleCovAnisKernel_2d!\n", cudaStatus);	
 	}
@@ -1156,6 +1164,7 @@ void EXPORT unconditionalSimRealizations_2d(double *p_out,  int *p_k, int *ret_c
 	int k = *p_k;
 
 	double *d_rand; // device random numbers
+	double *d_noise; // random numbers for nugget
 	curandGenerator_t curandGen;
 	cufftDoubleComplex *d_fftrand;
 	cufftDoubleComplex* d_amp;
@@ -1170,9 +1179,20 @@ void EXPORT unconditionalSimRealizations_2d(double *p_out,  int *p_k, int *ret_c
 		if(l==0){			
 			cudaStatus = cudaMalloc((void**)&d_rand,sizeof(double)*uncond_global_2d.m*uncond_global_2d.n); 
 			if (cudaStatus != cudaSuccess)  printf("cudaMalloc returned error code %d\n", cudaStatus);
+		
+			if (uncond_global_2d.nugget > 0.0) 
+			{
+				cudaStatus = cudaMalloc((void**)&d_noise,sizeof(double)*uncond_global_2d.m*uncond_global_2d.n); 
+				if (cudaStatus != cudaSuccess)  printf("cudaMalloc returned error code %d\n", cudaStatus);
+			}
 		}
 			// Generate Random Numbers
 		curandGenerateNormalDouble(curandGen,d_rand,uncond_global_2d.m*uncond_global_2d.n,0.0,1.0);
+		if (uncond_global_2d.nugget > 0.0) 
+		{
+			curandGenerateNormalDouble(curandGen,d_noise,uncond_global_2d.m*uncond_global_2d.n,0.0,std::sqrt(uncond_global_2d.nugget));
+		}
+		
 		if(l==0) {
 			cudaStatus = cudaMalloc((void**)&d_fftrand,sizeof(cufftDoubleComplex) * uncond_global_2d.n * uncond_global_2d.m); 
 			if (cudaStatus != cudaSuccess)  printf("cudaMalloc returned error code %d\n", cudaStatus);
@@ -1197,14 +1217,26 @@ void EXPORT unconditionalSimRealizations_2d(double *p_out,  int *p_k, int *ret_c
 		dim3 blockCount2dhalf = dim3(uncond_global_2d.nx/blockSize2dhalf.x,uncond_global_2d.ny/blockSize2dhalf.y);
 		if (uncond_global_2d.nx % blockSize2dhalf.x != 0) ++blockCount2dhalf.x;
 		if (uncond_global_2d.ny % blockSize2dhalf.y != 0) ++blockCount2dhalf.y;
-		ReDiv_2d<<<blockCount2dhalf, blockSize2dhalf>>>(d_out, d_amp, std::sqrt((double)(uncond_global_2d.n*uncond_global_2d.m)), uncond_global_2d.nx, uncond_global_2d.ny, uncond_global_2d.n);
+		
+		
+		if (uncond_global_2d.nugget > 0.0) 
+		{
+			ReDivNoise_2d<<<blockCount2dhalf, blockSize2dhalf>>>(d_out, d_amp, std::sqrt((double)(uncond_global_2d.n*uncond_global_2d.m)), uncond_global_2d.nx, uncond_global_2d.ny, uncond_global_2d.n, d_noise);
+		}
+		else 
+		{
+			ReDiv_2d<<<blockCount2dhalf, blockSize2dhalf>>>(d_out, d_amp, std::sqrt((double)(uncond_global_2d.n*uncond_global_2d.m)), uncond_global_2d.nx, uncond_global_2d.ny, uncond_global_2d.n);
+		}
 		cudaStatus = cudaThreadSynchronize();	
 		if (cudaStatus != cudaSuccess) {
 			printf("cudaThreadSynchronize returned error code %d after launching ReDiv_2d!\n", cudaStatus);
 		}
 		cudaMemcpy((p_out + l*(uncond_global_2d.nx*uncond_global_2d.ny)),d_out,sizeof(double)*uncond_global_2d.nx*uncond_global_2d.ny,cudaMemcpyDeviceToHost);
 	}
-
+	if (uncond_global_2d.nugget > 0.0) 
+	{
+		cudaFree(d_noise);
+	}
 	cudaFree(d_rand);
 	cudaFree(d_fftrand);
 	cudaFree(d_amp);
@@ -1386,10 +1418,10 @@ void EXPORT conditionalSimInit_2d(double *p_xmin, double *p_xmax, int *p_nx, dou
 	cudaStatus = cudaMemcpy(d_grid,h_grid_c, cond_global_2d.n*cond_global_2d.m*sizeof(cufftDoubleComplex),cudaMemcpyHostToDevice);
 	
 	if (cond_global_2d.isotropic) {
-		sampleCovKernel_2d<<<cond_global_2d.blockCount2d, cond_global_2d.blockSize2d>>>(d_trick_grid_c, d_grid, cond_global_2d.d_cov, xc, yc, cond_global_2d.covmodel, cond_global_2d.sill, cond_global_2d.range, cond_global_2d.nugget, cond_global_2d.n,cond_global_2d.m);
+		sampleCovKernel_2d<<<cond_global_2d.blockCount2d, cond_global_2d.blockSize2d>>>(d_trick_grid_c, d_grid, cond_global_2d.d_cov, xc, yc, cond_global_2d.covmodel, cond_global_2d.sill, cond_global_2d.range, 0.0, cond_global_2d.n,cond_global_2d.m);
 	}
 	else {
-		sampleCovAnisKernel_2d<<<cond_global_2d.blockCount2d, cond_global_2d.blockSize2d>>>(d_trick_grid_c, d_grid, cond_global_2d.d_cov, xc, yc, cond_global_2d.covmodel, cond_global_2d.sill, cond_global_2d.range, cond_global_2d.nugget,cond_global_2d.alpha,cond_global_2d.afac1, cond_global_2d.n,cond_global_2d.m);
+		sampleCovAnisKernel_2d<<<cond_global_2d.blockCount2d, cond_global_2d.blockSize2d>>>(d_trick_grid_c, d_grid, cond_global_2d.d_cov, xc, yc, cond_global_2d.covmodel, cond_global_2d.sill, cond_global_2d.range, 0.0,cond_global_2d.alpha,cond_global_2d.afac1, cond_global_2d.n,cond_global_2d.m);
 	}
 
 	free(h_grid_c);
@@ -1480,6 +1512,7 @@ void EXPORT conditionalSimUncondResiduals_2d(double *p_out, int *p_k, int *ret_c
 	cond_global_2d.k = *p_k;
 	
 	double *d_rand; // Device Random Numbers
+	double *d_noise;
 	curandGenerator_t curandGen;
 	cufftDoubleComplex *d_fftrand;
 	cufftDoubleComplex* d_amp;	
@@ -1489,6 +1522,11 @@ void EXPORT conditionalSimUncondResiduals_2d(double *p_out, int *p_k, int *ret_c
 	
 	cudaStatus = cudaMalloc((void**)&d_rand,sizeof(double)*cond_global_2d.m*cond_global_2d.n); 
 	if (cudaStatus != cudaSuccess)  printf("cudaMalloc returned error code %d\n", cudaStatus);
+	if (cond_global_2d.nugget > 0.0) 
+	{
+		cudaStatus = cudaMalloc((void**)&d_noise,sizeof(double)*cond_global_2d.m*cond_global_2d.n); 
+		if (cudaStatus != cudaSuccess)  printf("cudaMalloc returned error code %d\n", cudaStatus);
+	}
 	cudaStatus = cudaMalloc((void**)&d_fftrand,sizeof(cufftDoubleComplex) * cond_global_2d.n * cond_global_2d.m); 
 	if (cudaStatus != cudaSuccess)  printf("cudaMalloc returned error code %d\n", cudaStatus);
 	cudaMalloc((void**)&d_amp,sizeof(cufftDoubleComplex)*cond_global_2d.n*cond_global_2d.m);
@@ -1528,6 +1566,11 @@ void EXPORT conditionalSimUncondResiduals_2d(double *p_out, int *p_k, int *ret_c
 			
 		
 		curandGenerateNormalDouble(curandGen,d_rand,cond_global_2d.m*cond_global_2d.n,0.0,1.0);	
+		if (cond_global_2d.nugget > 0.0) 
+		{
+			curandGenerateNormalDouble(curandGen,d_noise,cond_global_2d.m*cond_global_2d.n,0.0,std::sqrt(cond_global_2d.nugget));
+		}
+		
 		realToComplexKernel_2d<<< cond_global_2d.blockCount1d, cond_global_2d.blockSize1d>>>(d_fftrand, d_rand, cond_global_2d.n*cond_global_2d.m);
 		cudaStatus = cudaThreadSynchronize();
 		if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching realToComplexKernel_f!\n", cudaStatus);	
@@ -1549,10 +1592,24 @@ void EXPORT conditionalSimUncondResiduals_2d(double *p_out, int *p_k, int *ret_c
         //GPU cache TRUE/FALSE
 		
 		if (cond_global_2d.uncond_gpucache) {
-			ReDiv_2d<<<blockCount2dhalf, blockSize2dhalf>>>(cond_global_2d.d_uncond + l*cond_global_2d.nx*cond_global_2d.ny, d_amp, std::sqrt((double)(cond_global_2d.n*cond_global_2d.m)), cond_global_2d.nx, cond_global_2d.ny, cond_global_2d.n);
+			if (cond_global_2d.nugget > 0.0) 
+			{
+				ReDivNoise_2d<<<blockCount2dhalf, blockSize2dhalf>>>(cond_global_2d.d_uncond + l*cond_global_2d.nx*cond_global_2d.ny, d_amp, std::sqrt((double)(cond_global_2d.n*cond_global_2d.m)), cond_global_2d.nx, cond_global_2d.ny, cond_global_2d.n, d_noise);
+			}
+			else 
+			{
+				ReDiv_2d<<<blockCount2dhalf, blockSize2dhalf>>>(cond_global_2d.d_uncond + l*cond_global_2d.nx*cond_global_2d.ny, d_amp, std::sqrt((double)(cond_global_2d.n*cond_global_2d.m)), cond_global_2d.nx, cond_global_2d.ny, cond_global_2d.n);
+			}
 		}
 		else {
-			ReDiv_2d<<<blockCount2dhalf, blockSize2dhalf>>>(cond_global_2d.d_uncond, d_amp, std::sqrt((double)(cond_global_2d.n*cond_global_2d.m)), cond_global_2d.nx, cond_global_2d.ny, cond_global_2d.n);
+			if (cond_global_2d.nugget > 0.0) 
+			{
+				ReDivNoise_2d<<<blockCount2dhalf, blockSize2dhalf>>>(cond_global_2d.d_uncond, d_amp, std::sqrt((double)(cond_global_2d.n*cond_global_2d.m)), cond_global_2d.nx, cond_global_2d.ny, cond_global_2d.n, d_noise);
+			}
+			else 
+			{
+				ReDiv_2d<<<blockCount2dhalf, blockSize2dhalf>>>(cond_global_2d.d_uncond, d_amp, std::sqrt((double)(cond_global_2d.n*cond_global_2d.m)), cond_global_2d.nx, cond_global_2d.ny, cond_global_2d.n);
+			}
 		}
 		
         //Brauchen wir diese Thread-Synchronisation? Wahrscheinlich nicht.
@@ -1604,7 +1661,10 @@ void EXPORT conditionalSimUncondResiduals_2d(double *p_out, int *p_k, int *ret_c
 		}
 	}
 	curandDestroyGenerator(curandGen);
-	
+	if (cond_global_2d.nugget > 0.0) 
+	{
+		cudaFree(d_noise);
+	}
 	cudaFree(d_rand);
 	cudaFree(d_fftrand);
 	cudaFree(d_amp);

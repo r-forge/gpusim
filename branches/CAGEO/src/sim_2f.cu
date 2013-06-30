@@ -166,6 +166,13 @@ __global__ void ReDiv_2f(float *out, cufftComplex *c, float div,int nx, int ny, 
 }
 
 
+// Gets relevant real parts of 2nx x 2ny grid and devides it by div
+__global__ void ReDivNoise_2f(float *out, cufftComplex *c,  float div,int nx, int ny, int M, float* noise) {
+	int col = threadIdx.x + blockIdx.x * blockDim.x;
+	int row = threadIdx.y + blockIdx.y * blockDim.y;
+	//if (col < nx && row < ny) out[col*ny+row] = c[col*2*ny+row].x / div; 
+	if (col < nx && row < ny) out[row*nx+col] = (c[row*M+col].x / div) + noise[row*M+col]; 
+}
 
 
 
@@ -925,6 +932,7 @@ struct uncond_state_2f {
 	dim3 blockCount2d;
 	dim3 blockSize1d;
 	dim3 blockCount1d;
+	float nugget;
 } uncond_global_2f;
 
 
@@ -985,7 +993,7 @@ void EXPORT unconditionalSimInit_2f(float *p_xmin, float *p_xmax, int *p_nx, flo
 	float yc = *p_ymin +(uncond_global_2f.dy*uncond_global_2f.m)/2;
 	float sill = *p_sill;
 	float range = *p_range;
-	float nugget = *p_nugget;
+	uncond_global_2f.nugget = *p_nugget;
 	bool isotropic = (*p_anis_ratio == 1.0);
 	float afac1 = 1.0/(*p_anis_ratio);
 	float alpha = (90.0 - *p_anis_direction) * (PI / 180.0);
@@ -1004,12 +1012,12 @@ void EXPORT unconditionalSimInit_2f(float *p_xmin, float *p_xmax, int *p_nx, flo
 	cudaStatus = cudaMemcpy(d_grid,h_grid_c, uncond_global_2f.n*uncond_global_2f.m*sizeof(cufftComplex),cudaMemcpyHostToDevice);
 	
 	if (isotropic) {
-		sampleCovKernel_2f<<<uncond_global_2f.blockCount2d, uncond_global_2f.blockSize2d>>>(d_trick_grid_c, d_grid, uncond_global_2f.d_cov, xc, yc,*p_covmodel, sill, range,nugget,uncond_global_2f.n,uncond_global_2f.m);
+		sampleCovKernel_2f<<<uncond_global_2f.blockCount2d, uncond_global_2f.blockSize2d>>>(d_trick_grid_c, d_grid, uncond_global_2f.d_cov, xc, yc,*p_covmodel, sill, range,0.0,uncond_global_2f.n,uncond_global_2f.m);
 	    //cudaStatus = cudaThreadSynchronize();
 		//if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching sampleCovKernel_2f!\n", cudaStatus);
 	}
 	else {	
-		sampleCovAnisKernel_2f<<<uncond_global_2f.blockCount2d, uncond_global_2f.blockSize2d>>>(d_trick_grid_c, d_grid, uncond_global_2f.d_cov, xc, yc, *p_covmodel, sill, range,nugget, alpha, afac1, uncond_global_2f.n,uncond_global_2f.m);	
+		sampleCovAnisKernel_2f<<<uncond_global_2f.blockCount2d, uncond_global_2f.blockSize2d>>>(d_trick_grid_c, d_grid, uncond_global_2f.d_cov, xc, yc, *p_covmodel, sill, range,0.0, alpha, afac1, uncond_global_2f.n,uncond_global_2f.m);	
 		//cudaStatus = cudaThreadSynchronize();
 		//if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching sampleCovAnisKernel_2f!\n", cudaStatus);
 	}
@@ -1141,23 +1149,38 @@ void EXPORT unconditionalSimRealizations_2f(float *p_out,  int *p_k, int *ret_co
 	int k = *p_k;
 
 	float *d_rand; // device random numbers
+	float *d_noise; // random numbers for nugget
 	curandGenerator_t curandGen;
 	cufftComplex *d_fftrand;
 	cufftComplex* d_amp;
 	float* d_out;
 
 	curandCreateGenerator(&curandGen, CURAND_RNG_PSEUDO_DEFAULT);
-	curandSetPseudoRandomGeneratorSeed(curandGen,(unsigned long long)(time(NULL)));	
+	curandSetPseudoRandomGeneratorSeed(curandGen,(unsigned long long)(time(NULL)));	// TODO: Call only once when loading package
+
+
+
 
 	for(int l = 0; l<k; ++l) {
 		
 		if(l==0){			
 			cudaStatus = cudaMalloc((void**)&d_rand,sizeof(float)*uncond_global_2f.m*uncond_global_2f.n); 
 			if (cudaStatus != cudaSuccess)  printf("cudaMalloc returned error code %d\n", cudaStatus);
+
+			if (uncond_global_2f.nugget > 0.0) 
+			{
+				cudaStatus = cudaMalloc((void**)&d_noise,sizeof(float)*uncond_global_2f.m*uncond_global_2f.n); 
+				if (cudaStatus != cudaSuccess)  printf("cudaMalloc returned error code %d\n", cudaStatus);
+			}
+			
 		}
 			// Generate Random Numbers
 		curandGenerateNormal(curandGen,d_rand,uncond_global_2f.m*uncond_global_2f.n,0.0,1.0);
-		
+		if (uncond_global_2f.nugget > 0.0) 
+		{
+			curandGenerateNormal(curandGen,d_noise,uncond_global_2f.m*uncond_global_2f.n,0.0,std::sqrt(uncond_global_2f.nugget));
+		}
+
 		if(l==0) {
 			cudaStatus = cudaMalloc((void**)&d_fftrand,sizeof(cufftComplex) * uncond_global_2f.n * uncond_global_2f.m); 
 			if (cudaStatus != cudaSuccess)  printf("cudaMalloc returned error code %d\n", cudaStatus);
@@ -1184,7 +1207,14 @@ void EXPORT unconditionalSimRealizations_2f(float *p_out,  int *p_k, int *ret_co
 		dim3 blockCount2dhalf = dim3(uncond_global_2f.nx/blockSize2dhalf.x,uncond_global_2f.ny/blockSize2dhalf.y);
 		if (uncond_global_2f.nx % blockSize2dhalf.x != 0) ++blockCount2dhalf.x;
 		if (uncond_global_2f.ny % blockSize2dhalf.y != 0) ++blockCount2dhalf.y;
-		ReDiv_2f<<<blockCount2dhalf, blockSize2dhalf>>>(d_out, d_amp, std::sqrt((float)(uncond_global_2f.n*uncond_global_2f.m)), uncond_global_2f.nx, uncond_global_2f.ny, uncond_global_2f.n);
+		if (uncond_global_2f.nugget > 0.0) 
+		{
+			ReDivNoise_2f<<<blockCount2dhalf, blockSize2dhalf>>>(d_out, d_amp, std::sqrt((float)(uncond_global_2f.n*uncond_global_2f.m)), uncond_global_2f.nx, uncond_global_2f.ny, uncond_global_2f.n, d_noise);
+		}
+		else 
+		{
+			ReDiv_2f<<<blockCount2dhalf, blockSize2dhalf>>>(d_out, d_amp, std::sqrt((float)(uncond_global_2f.n*uncond_global_2f.m)), uncond_global_2f.nx, uncond_global_2f.ny, uncond_global_2f.n);
+		}
 		cudaStatus = cudaThreadSynchronize();	
 		if (cudaStatus != cudaSuccess) {
 			printf("cudaThreadSynchronize returned error code %d after launching ReDiv_2f!\n", cudaStatus);
@@ -1192,7 +1222,10 @@ void EXPORT unconditionalSimRealizations_2f(float *p_out,  int *p_k, int *ret_co
 
 		cudaMemcpy((p_out + l*(uncond_global_2f.nx*uncond_global_2f.ny)),d_out,sizeof(float)*uncond_global_2f.nx*uncond_global_2f.ny,cudaMemcpyDeviceToHost);					
 	}
-
+	if (uncond_global_2f.nugget > 0.0) 
+	{
+		cudaFree(d_noise);
+	}
 	cudaFree(d_rand);
 	cudaFree(d_fftrand);
 	cudaFree(d_amp);
@@ -1359,10 +1392,10 @@ void EXPORT conditionalSimInit_2f(float *p_xmin, float *p_xmax, int *p_nx, float
 	
 
 	if (cond_global_2f.isotropic) {
-		sampleCovKernel_2f<<<cond_global_2f.blockCount2d, cond_global_2f.blockSize2d>>>(d_trick_grid_c, d_grid, cond_global_2f.d_cov, xc, yc, cond_global_2f.covmodel, cond_global_2f.sill, cond_global_2f.range, cond_global_2f.nugget, cond_global_2f.n,cond_global_2f.m);
+		sampleCovKernel_2f<<<cond_global_2f.blockCount2d, cond_global_2f.blockSize2d>>>(d_trick_grid_c, d_grid, cond_global_2f.d_cov, xc, yc, cond_global_2f.covmodel, cond_global_2f.sill, cond_global_2f.range, 0.0, cond_global_2f.n,cond_global_2f.m);
 	}
 	else {
-		sampleCovAnisKernel_2f<<<cond_global_2f.blockCount2d, cond_global_2f.blockSize2d>>>(d_trick_grid_c, d_grid, cond_global_2f.d_cov, xc, yc, cond_global_2f.covmodel, cond_global_2f.sill, cond_global_2f.range, cond_global_2f.nugget,cond_global_2f.alpha,cond_global_2f.afac1, cond_global_2f.n,cond_global_2f.m);
+		sampleCovAnisKernel_2f<<<cond_global_2f.blockCount2d, cond_global_2f.blockSize2d>>>(d_trick_grid_c, d_grid, cond_global_2f.d_cov, xc, yc, cond_global_2f.covmodel, cond_global_2f.sill, cond_global_2f.range, 0.0,cond_global_2f.alpha,cond_global_2f.afac1, cond_global_2f.n,cond_global_2f.m);
 	}
 
 	free(h_grid_c);
@@ -1451,6 +1484,7 @@ void EXPORT conditionalSimUncondResiduals_2f(float *p_out, int *p_k, int *ret_co
 	cond_global_2f.k = *p_k;
 	
 	float *d_rand; // Device Random Numbers
+	float *d_noise;
 	curandGenerator_t curandGen;
 	cufftComplex *d_fftrand;
 	cufftComplex* d_amp;	
@@ -1461,6 +1495,11 @@ void EXPORT conditionalSimUncondResiduals_2f(float *p_out, int *p_k, int *ret_co
 	
 	cudaStatus = cudaMalloc((void**)&d_rand,sizeof(float)*cond_global_2f.m*cond_global_2f.n); 
 	if (cudaStatus != cudaSuccess)  printf("cudaMalloc returned error code %d\n", cudaStatus);
+	if (cond_global_2f.nugget > 0.0) 
+	{
+		cudaStatus = cudaMalloc((void**)&d_noise,sizeof(float)*cond_global_2f.m*cond_global_2f.n); 
+		if (cudaStatus != cudaSuccess)  printf("cudaMalloc returned error code %d\n", cudaStatus);
+	}
 	cudaStatus = cudaMalloc((void**)&d_fftrand,sizeof(cufftComplex) * cond_global_2f.n * cond_global_2f.m); 
 	if (cudaStatus != cudaSuccess)  printf("cudaMalloc returned error code %d\n", cudaStatus);
 	cudaMalloc((void**)&d_amp,sizeof(cufftComplex)*cond_global_2f.n*cond_global_2f.m);
@@ -1498,6 +1537,11 @@ void EXPORT conditionalSimUncondResiduals_2f(float *p_out, int *p_k, int *ret_co
 			
 		
 		curandGenerateNormal(curandGen,d_rand,cond_global_2f.m*cond_global_2f.n,0.0,1.0);	
+		if (cond_global_2f.nugget > 0.0) 
+		{
+			curandGenerateNormal(curandGen,d_noise,cond_global_2f.m*cond_global_2f.n,0.0,std::sqrt(cond_global_2f.nugget));
+		}
+			
 		realToComplexKernel_2f<<< cond_global_2f.blockCount1d, cond_global_2f.blockSize1d>>>(d_fftrand, d_rand, cond_global_2f.n*cond_global_2f.m);
 		cudaStatus = cudaThreadSynchronize();
 		if (cudaStatus != cudaSuccess)  printf("cudaThreadSynchronize returned error code %d after launching realToComplexKernel_2f!\n", cudaStatus);	
@@ -1517,10 +1561,24 @@ void EXPORT conditionalSimUncondResiduals_2f(float *p_out, int *p_k, int *ret_co
 		if (cond_global_2f.ny % blockSize2dhalf.y != 0) ++blockCount2dhalf.y;
 
 		if (cond_global_2f.uncond_gpucache) {
-			ReDiv_2f<<<blockCount2dhalf, blockSize2dhalf>>>(cond_global_2f.d_uncond + l*cond_global_2f.nx*cond_global_2f.ny, d_amp, std::sqrt((float)(cond_global_2f.n*cond_global_2f.m)), cond_global_2f.nx, cond_global_2f.ny, cond_global_2f.n);
+			if (cond_global_2f.nugget > 0.0) 
+			{
+				ReDivNoise_2f<<<blockCount2dhalf, blockSize2dhalf>>>(cond_global_2f.d_uncond + l*cond_global_2f.nx*cond_global_2f.ny, d_amp, std::sqrt((float)(cond_global_2f.n*cond_global_2f.m)), cond_global_2f.nx, cond_global_2f.ny, cond_global_2f.n, d_noise);
+			}
+			else 
+			{
+				ReDiv_2f<<<blockCount2dhalf, blockSize2dhalf>>>(cond_global_2f.d_uncond + l*cond_global_2f.nx*cond_global_2f.ny, d_amp, std::sqrt((float)(cond_global_2f.n*cond_global_2f.m)), cond_global_2f.nx, cond_global_2f.ny, cond_global_2f.n);
+			}
 		}
 		else {
-			ReDiv_2f<<<blockCount2dhalf, blockSize2dhalf>>>(cond_global_2f.d_uncond, d_amp, std::sqrt((float)(cond_global_2f.n*cond_global_2f.m)), cond_global_2f.nx, cond_global_2f.ny, cond_global_2f.n);
+			if (cond_global_2f.nugget > 0.0) 
+			{
+				ReDivNoise_2f<<<blockCount2dhalf, blockSize2dhalf>>>(cond_global_2f.d_uncond, d_amp, std::sqrt((float)(cond_global_2f.n*cond_global_2f.m)), cond_global_2f.nx, cond_global_2f.ny, cond_global_2f.n, d_noise);
+			}
+			else 
+			{
+				ReDiv_2f<<<blockCount2dhalf, blockSize2dhalf>>>(cond_global_2f.d_uncond, d_amp, std::sqrt((float)(cond_global_2f.n*cond_global_2f.m)), cond_global_2f.nx, cond_global_2f.ny, cond_global_2f.n);
+			}
 		}
 		cudaStatus = cudaThreadSynchronize();	
 		
@@ -1585,7 +1643,10 @@ void EXPORT conditionalSimUncondResiduals_2f(float *p_out, int *p_k, int *ret_co
 		}
 	}
 
-	
+	if (cond_global_2f.nugget > 0.0) 
+	{
+		cudaFree(d_noise);
+	}
 	cudaFree(d_rand);
 	cudaFree(d_fftrand);
 	cudaFree(d_amp);
